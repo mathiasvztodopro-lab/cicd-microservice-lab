@@ -191,3 +191,42 @@ HALLAZGOS NO PREVISTOS DEL DIA 1 (para revision del docente)
    latest sea v6/v5. Decision consciente: el material los especifica asi y la
    rúbrica probablemente compara contra eso. Anotado para cuando toque
    actualizar, con el riesgo de que `node-version: '20'` quede obsoleto.
+
+6. El script `lint` del material (`eslint src/**/*.ts`) tiene un agujero
+   silencioso en Linux, y lo reproduje con bash antes de afirmarlo.
+
+   El problema: `**` NO significa "cualquier profundidad" en el shell. Significa
+   eso recien con `globstar` activado, que en bash viene desactivado por
+   defecto y `sh`/dash (el shell que npm usa en Ubuntu) directamente no lo
+   tiene. Sin globstar, `**` se comporta como `*`, asi que `src/**/*.ts`
+   expande a `src/*/*.ts`: archivos exactamente UN nivel dentro de `src/`.
+
+   Reproduccion, con un archivo sonda en `src/_probe.ts` (nivel 1) y otro en
+   `src/sub/_probe2.ts` (nivel 2), ejecutando via bash:
+
+     eslint src            -> reporta _probe.ts Y sub/_probe2.ts   (2 errors)
+     eslint "src/**/*.ts"  -> reporta _probe.ts Y sub/_probe2.ts   (2 errors)
+     eslint src/**/*.ts    -> reporta SOLO sub/_probe2.ts          (1 error)
+
+   La tercera linea es la que corre en el runner, porque npm ejecuta los
+   scripts con el shell, y el shell expande el glob ANTES de que ESLint lo vea.
+
+   Por que hoy no se nota y por que es peligroso: hoy `src/` tiene un solo
+   archivo, `src/index.ts`, y el glob `src/*/*.ts` no matchea nada. Cuando bash
+   no encuentra match, deja el patron LITERAL y se lo pasa a ESLint, que si
+   entiende `**` y lo resuelve bien. O sea: hoy funciona por accidente. El dia
+   que se agregue `src/routes/auth.ts` (que es exactamente lo que traen los dias
+   3 y 4), el glob SI matchea, bash lo expande a la lista de archivos, y
+   `src/index.ts` deja de lintearse. La pipeline queda en verde mientras el
+   archivo principal del servicio nunca mas pasa por el linter.
+
+   Ese es el peor tipo de fallo: verde, silencioso, y con el gate abierto justo
+   en el archivo mas importante. Correccion: `eslint src` (o `eslint .`). ESLint
+   expande directorios por si mismo, con su propio matcher, que SI trata `**`
+   como cero o mas niveles. El resultado es identico en Windows y en Linux, sin
+   depender de la configuracion del shell del runner.
+
+   Leccion que me llevo del dia 1: un glob escrito en un package.json no lo
+   interpreta una sola vez, lo interpretan DOS programas en serie (el shell y
+   despues la herramienta), con reglas distintas. Todo lo que se escriba ahi
+   tiene que funcionar bajo las dos.

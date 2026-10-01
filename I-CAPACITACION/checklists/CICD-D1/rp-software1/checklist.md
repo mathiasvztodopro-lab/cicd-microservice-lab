@@ -22,6 +22,29 @@ El material original propone `.eslintrc.json`, pero ESLint 10 solo soporta
 "flat config", asi que la configuracion equivalente vive en
 `I-CAPACITACION/api-service/eslint.config.js`.
 
+Verificado por ejecucion (archivo sonda con violaciones a proposito):
+- `@typescript-eslint/no-explicit-any` -> error
+- `@typescript-eslint/no-unused-vars` -> error en variable local sin usar
+- `argsIgnorePattern: '^_'` -> un parametro `_ignorado` NO se reporta
+- `no-console: 'off'` -> un `console.log` NO se reporta
+
+Es decir: las 3 reglas propias y los 2 presets (`eslint:recommended` +
+`plugin:@typescript-eslint/recommended`, ahora dentro de
+`tseslint.configs.recommended`) estan activos y cumplen. Lo unico que cambia
+es el nombre del archivo, porque el formato viejo fue removido de la
+herramienta. Un `.eslintrc.json` en la raiz del paquete quedaria como
+configuracion muerta: ESLint 10 no lo lee.
+
+`.gitignore` esta con las 5 lineas exactas del material
+(`node_modules/`, `dist/`, `coverage/`, `.env`, `*.log`).
+
+Los 6 scripts del material estan presentes con los mismos nombres. Dos
+diferencias de valor, ambas a proposito:
+- `lint` / `lint:fix` usan `eslint src` y no `eslint src/**/*.ts`. Ver hallazgo
+  #6: la version del material tiene un agujero silencioso en el runner Linux.
+- `test` usa `node -e "..."` en vez de `echo "..." && exit 0`: imprime el mismo
+  mensaje y devuelve exit 0, pero funciona igual en Windows y en Linux.
+
 El workflow `ci.yml` esta en la raiz del repositorio y no dentro de
 `api-service/`: sus pasos usan `working-directory: I-CAPACITACION/api-service` y
 `cache-dependency-path: I-CAPACITACION/api-service/package-lock.json`, rutas que
