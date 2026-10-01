@@ -49,4 +49,9 @@ Permisos del `GITHUB_TOKEN`: `contents: read`.
 - ESLint 10 solo soporta flat config, por eso la configuración vive en
   `eslint.config.js` y no en `.eslintrc.json`.
 - El workflow está en la raíz del repo porque sus pasos usan
-  `working-directory: api-service`; GitHub Actions ignora workflows anidados.
+  `working-directory: I-CAPACITACION/api-service`; GitHub Actions ignora
+  workflows anidados.
+- `cache-dependency-path` y `working-directory` apuntan a
+  `I-CAPACITACION/api-service/...`: con `api-service/...` a secas la primera
+  ejecución falla en el setup de Node con "Some specified paths were not
+  resolved, unable to cache dependencies".

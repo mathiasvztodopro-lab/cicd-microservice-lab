@@ -23,10 +23,15 @@ El material original propone `.eslintrc.json`, pero ESLint 10 solo soporta
 `I-CAPACITACION/api-service/eslint.config.js`.
 
 El workflow `ci.yml` esta en la raiz del repositorio y no dentro de
-`api-service/`: sus pasos usan `working-directory: api-service` y
-`cache-dependency-path: api-service/package-lock.json`, rutas que solo resuelven
-desde la raiz. Ademas GitHub Actions solo lee workflows ubicados en
-`.github/workflows/` en la raiz.
+`api-service/`: sus pasos usan `working-directory: I-CAPACITACION/api-service` y
+`cache-dependency-path: I-CAPACITACION/api-service/package-lock.json`, rutas que
+solo resuelven desde la raiz. Ademas GitHub Actions solo lee workflows ubicados
+en `.github/workflows/` en la raiz.
+
+Con los paths que trae el material original (`api-service/...`) la primera
+ejecucion fallo en `Setup Node.js runtime environment` con
+"Some specified paths were not resolved, unable to cache dependencies": el
+microservicio vive un nivel mas abajo, dentro de `I-CAPACITACION/`.
 
 `typescript` quedo pineado en `^5.9.3` porque `typescript-eslint@8` exige la
 rama `>=4.8.4 <6.1.0`; con `typescript@7` la instalacion falla por peer
