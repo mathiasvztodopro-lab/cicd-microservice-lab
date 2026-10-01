@@ -8,8 +8,12 @@ salir de tu comprension del runner, no de un texto memorizado.
 ────────────────────────────────────────────────────────────────────────
 REGISTRO DE EVIDENCIA (timestamps reales leidos de la API de GitHub)
 
-Repositorio:  https://github.com/mathiasvztodopro-lab/cicd-microservice-lab (privado)
+Repositorio:  https://github.com/mathiasvztodopro-lab/cicd-microservice-lab (publico)
 Commits:      de66978 inicial -> 995e5c1 fix(ci) -> a38be25 merge PR #1
+              -> 2e7776c docs -> 993ded3 docs -> a288c22 merge PR #2 (Branch Protection)
+
+Workflow:     "Continuous Integration - Lint & Build" | job: "Code Quality & Typecheck"
+Total de runs auditadas: 10 (leidas de la API, campo created_at)
 
 | run# | rama                         | evento        | resultado | npm ci | cache setup-node |
 |-----|------------------------------|---------------|-----------|--------|------------------|
@@ -19,6 +23,10 @@ Commits:      de66978 inicial -> 995e5c1 fix(ci) -> a38be25 merge PR #1
 |  #4  | feature/dia1-demo-error-...   | pull_request  | FALLA     |  2 s   | hit             |
 |  #5  | feature/dia1-demo-error-...   | pull_request  | OK        |  1 s   | hit             |
 |  #6  | main                         | push          | OK        |  1 s   | hit (9 MB)      |
+|  #7  | main                         | push          | OK        |  1 s   | hit             |
+|  #8  | main                         | push          | OK        |  1 s   | hit             |
+|  #9  | docs/dia1-branch-protection   | pull_request  | OK        |  1 s   | hit             |
+| #10  | main                         | push          | OK        |  1 s   | hit             |
 
 1) ¿Cuál es la diferencia critica entre `npm install` y `npm ci`, y que
    catastrofe puede ocurrir en produccion si un runner usa `npm install`?
@@ -185,6 +193,25 @@ gate y no en adorno): un `git push` directo a `main` fue RECHAZADO por la regla
 mismo cierre tuvieron que entrar por Pull Request. A partir de aca todo cambio
 pasa por PR, incluidos los mios como administrador: eso es exactamente lo que
 pide el material con "Do not allow bypassing the above settings".
+
+El trayecto completo de ese PR de documentacion, con evidencia de la API:
+
+  rama:   docs/dia1-branch-protection (commit f7798b8)
+  run #9: pull_request -> OK  (el status check exigido: "Code Quality & Typecheck")
+  PR #2:  https://github.com/mathiasvztodopro-lab/cicd-microservice-lab/pull/2
+          merge_method=squash -> a288c22  ("Pull Request successfully merged")
+  run #10: push a main (a288c22) -> OK
+  rama borrada (local y remota); queda solo `main`
+  estado final de la proteccion (GET /branches/main/protection):
+    required_pull_request_reviews  = activa, 0 aprobaciones
+    required_status_checks.contexts= ["Code Quality & Typecheck"], strict=false
+    enforce_admins.enabled         = true
+    allow_force_pushes             = false | allow_deletions = false
+
+Observacion de la run #9: junto al check propio aparecio en el PR un segundo
+check, "SonarCloud Code Analysis" (success), que yo no configure. No es de mi
+workflow ni es un check requerido por la regla; queda registrado porque en un
+repo publico conviene saber que actores externos pueden publicar checks.
 
 
 ────────────────────────────────────────────────────────────────────────
