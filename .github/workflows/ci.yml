@@ -1,0 +1,43 @@
+name: Continuous Integration - Lint & Build
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+# Buenas prácticas de seguridad: restringir permisos del GITHUB_TOKEN
+permissions:
+  contents: read
+
+jobs:
+  lint-and-compile:
+    name: Code Quality & Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository source code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js runtime environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: api-service/package-lock.json
+
+      - name: Clean install dependencies (deterministic)
+        working-directory: api-service
+        run: npm ci
+
+      - name: Execute static analysis (ESLint)
+        working-directory: api-service
+        run: npm run lint
+
+      - name: Compile TypeScript to JavaScript (Typecheck)
+        working-directory: api-service
+        run: npm run build

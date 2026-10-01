@@ -1,0 +1,13 @@
+(agregar aqui el link publico del Loom del Dia 1)
+
+Estructura obligatoria del video (3 a 4 minutos):
+- Minuto 1: explicar a camara SIN leer que es CI y por que `npm ci` garantiza
+  determinismo en el runner.
+- Minutos 2-3: mostrar en GitHub (1) el archivo .github/workflows/ci.yml
+  explicando trigger y steps, (2) la pestana Actions con una ejecucion en verde y
+  los tiempos de cada step, (3) la seccion de Branch Protection Rules de `main`.
+- Minuto 4: mostrar el Pull Request de prueba del Bloque E con el merge
+  bloqueado por el error de compilacion.
+
+Ejemplo de formato:
+https://www.loom.com/share/<tu-id-aqui>

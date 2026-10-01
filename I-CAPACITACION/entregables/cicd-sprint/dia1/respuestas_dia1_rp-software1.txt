@@ -1,0 +1,83 @@
+BLOQUE D — CONSULTORIA ARQUITECTONICA CON IA
+Dia 1 de 7 | rp-software1 | curso: CICD
+
+PROMPT CONSULTADO
+────────────────────────────────────────────────────────────────────
+Actua como un Ingeniero Principal de DevOps y Release Engineering.
+He creado mi primer workflow de CI en GitHub Actions para una API en
+TypeScript con Express:
+- Pasos: checkout@v4, setup-node@v4 con cache 'npm', npm ci, npm run lint y
+  npm run build.
+- Triggers: push y pull_request hacia main y develop.
+
+Analiza criticamente esta configuracion y responde:
+1. ¿Que riesgos de seguridad existen si permito que un Pull Request proveniente
+   de un fork externo ejecute este workflow sin restricciones de permisos?
+2. ¿Por que se utiliza 'timeout-minutes: 10' en el job y que pasaria si un
+   proceso se queda colgado sin este parametro?
+3. Si en el futuro agregamos variables de entorno secretas (como API_KEYs),
+   ¿por que NO deberian estar disponibles en este job de lint/build?
+
+────────────────────────────────────────────────────────────────────
+RESPUESTAS (borrador para revision propia — reescribir con tus palabras)
+────────────────────────────────────────────────────────────────────
+
+1) RIESGO DE PULL REQUESTS DESDE FORKS EXTERNOS
+
+El workflow se dispara con el evento `pull_request`, y ese evento se ejecuta
+contra el codigo proposing, no contra el de `main`. Eso significa que un
+atacante que no tiene ningun permiso sobre el repositorio puede, abriendo un
+PR desde su propia cuenta, ejecutar pasos arbitrarios de shell en un runner de
+GitHub con el codigo que el mismo controla. Sin controles adicionales, el paso
+`npm ci` de un package.json manipulado es un vector de ejecucion de codigo
+arbitrario en la infraestructura de GitHub: scripts `preinstall`/`postinstall`
+arbitrarios se ejecutan durante la instalacion.
+
+El segundo problema es el `GITHUB_TOKEN`. En `pull_request` desde un fork, el
+token se expone automaticamente con permisos de solo lectura, y ningun secreto
+del repositorio (los `secrets.*`) se inyecta. Eso es una salvaguarda real: por
+eso el workflow declara `permissions: contents: read` de forma explicita en vez
+de depender del default, que puede cambiar segun la configuracion de la
+organizacion o del repositorio. Un job que "por omision" pide escritura y en un
+dia obtiene un token mas permisivo se convierte en el eslabon que un atacante
+usa para escribir en el repo.
+
+Que faltaria si el proyecto creciera:
+- `pull_request_target` NO debe usarse con checkout del codigo del PR: corre con
+  permisos de escritura y secretos, sobre un archivo que controla el atacante.
+- Los workflows que de verdad necesitan ejecutar codigo no confiable
+  (dependencias, builds) deberian correr en un job sin `secrets` y con
+  `permissions: {}` mas `contents: read` unicamente.
+- third-party actions pinneadas por SHA en vez de `@v4`, porque un tag movible
+  puede redirigir a un commit malicioso sin que cambie el archivo.
+
+2) POR QUE `timeout-minutes: 10`
+
+Un runner no esta limitado por consumo de CPU: un job tiene minutos de reloj.
+Los casos tipicos de cuelgue no son "compilacion lenta" sino procesos que
+esperan input, sockets que nunca cierran, `npm ci` bloqueado esperando un
+proxy, o un test con un await que nunca resuelve. Sin timeout, el job queda
+ocupando un runner hasta el limite global de la plataforma (6 horas de
+facturacion por job en planes con minutos incluidos) sin producir ninguna
+informacion util.
+
+El timeout convierte un fallo opaco en un fallo diagnosticable: el job figura
+como `cancelled` en el tiempo esperado y el pipeline sigue al siguiente paso
+(o se detiene) en lugar de colgarse. 10 minutos es holgado para
+install + lint + build de un proyecto de este tamano, asi que si un dia dispara
+el timeout, la senal real es "algo se rompio", no "la pipeline es lenta".
+
+3) POR QUE LAS SECRETOS NO DEBEN ESTAR DISPONIBLES EN LINT/BUILD
+
+Separacion de privilegios por etapa. Cada job recibe el minimo `GITHUB_TOKEN` y el
+minimo de `secrets` que necesita para cumplir su funcion; el resto se expone
+solo donde hace falta. Un job de lint y typecheck no llama a ningun servicio
+externo: no necesita `API_KEY` de Stripe, ni credenciales de base de datos, ni
+tokens de despliegue. Ponerlos disponibles agranda la superficie de ataque sin
+beneficio funcional: si un dia una dependencia comprometida o un error de
+configuracion filtra el entorno del job, los secretos se van con ella.
+
+Este workflow ya aplica el principio en su dimension propia: `permissions:
+contents: read` en lugar de los permisos de escritura por default del token. Los
+secretos de despliegue (`DEPLOY_WEBHOOK_URL`, credenciales de GHCR) pertenece a
+los jobs de Docker y CD de los dias 3 y 4, no a este.

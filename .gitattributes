@@ -1,0 +1,8 @@
+# Normaliza los finales de linea para que el working copy de Windows y el
+# checkout del runner de Linux produzcan exactamente los mismos bytes.
+# Sin esto, los scripts de bash de los dias 6-7 llegan al runner con CRLF y
+# fallan con "bad interpreter: /bin/bash^M".
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf

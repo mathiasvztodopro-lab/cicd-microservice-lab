@@ -1,0 +1,45 @@
+BLOQUE F — BITACORA DE CIERRE INDIVIDUAL
+Dia 1 de 7 | rp-software1 | curso: CICD
+
+Respondé estas 4 preguntas con tus palabras. No copies definiciones: el dia 1
+justifica por que `npm ci` y no `npm install` existe, y esa respuesta tiene que
+salir de tu comprension del runner, no de un texto memorizado.
+
+1) ¿Cuál es la diferencia critica entre `npm install` y `npm ci`, y que
+   catastrofe puede ocurrir en produccion si un runner usa `npm install`?
+
+   [ ] PENDIENTE
+
+
+2) Explica que es un "Cache Hit" y un "Cache Miss" en el contexto de
+   `actions/setup-node`. ¿Que archivo determina si la cache sigue siendo valida?
+
+   [ ] PENDIENTE
+
+
+3) ¿Por que configurar `permissions: contents: read` a nivel de workflow es un
+   principio fundamental de minima exposicion (Principle of Least Privilege)?
+
+   [ ] PENDIENTE
+
+
+4) En la simulacion del Bloque E, ¿que mensaje arrojo el runner en la consola
+   cuando fallo la compilacion de TypeScript?
+
+   [ ] PENDIENTE
+
+
+────────────────────────────────────────────────────────────────────
+PREDICCION (bloque B, escribila ANTES de ejecutar la pipeline por primera vez):
+
+Quanto tarde el runner de GitHub Actions en ejecutar `npm ci` sin cache vs con
+cache activado?
+
+   Sin cache: [ ] PENDIENTE
+   Con cache: [ ] PENDIENTE
+
+Despues de observar la primera ejecucion en la pestaña Actions, corregi estos
+numeros con los tiempos reales que mostro cada step:
+
+   Sin cache: [ ] PENDIENTE
+   Con cache: [ ] PENDIENTE
