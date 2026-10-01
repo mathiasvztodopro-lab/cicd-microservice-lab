@@ -5,41 +5,189 @@ Respondé estas 4 preguntas con tus palabras. No copies definiciones: el dia 1
 justifica por que `npm ci` y no `npm install` existe, y esa respuesta tiene que
 salir de tu comprension del runner, no de un texto memorizado.
 
+────────────────────────────────────────────────────────────────────────
+REGISTRO DE EVIDENCIA (timestamps reales leidos de la API de GitHub)
+
+Repositorio:  https://github.com/mathiasvztodopro-lab/cicd-microservice-lab (privado)
+Commits:      de66978 inicial -> 995e5c1 fix(ci) -> a38be25 merge PR #1
+
+| run# | rama                         | evento        | resultado | npm ci | cache setup-node |
+|-----|------------------------------|---------------|-----------|--------|------------------|
+|  #1  | main                         | push          | FALLA     |  0 s   | FALLA (paths)   |
+|  #2  | main                         | push          | OK        |  2 s   | miss -> escritura|
+|  #3  | feature/dia1-demo-error-...   | pull_request  | FALLA     |  2 s   | hit             |
+|  #4  | feature/dia1-demo-error-...   | pull_request  | FALLA     |  2 s   | hit             |
+|  #5  | feature/dia1-demo-error-...   | pull_request  | OK        |  1 s   | hit             |
+|  #6  | main                         | push          | OK        |  1 s   | hit (9 MB)      |
+
 1) ¿Cuál es la diferencia critica entre `npm install` y `npm ci`, y que
    catastrofe puede ocurrir en produccion si un runner usa `npm install`?
 
-   [ ] PENDIENTE
+   `npm install` resuelve el arbol de dependencias y, si `package-lock.json`
+   ya existe, puede decidir ACTUALIZARLO. `npm ci` no resuelve nada: lee el
+   lockfile y exige que cuadre con `package.json`, y si no cuadra aborta.
+
+   La catastrofe: en mi maquina tengo las dependencias que instale hace un mes,
+   hoy hacen todo bien. En el runner arranca de cero, `npm install` re-resuelve,
+   y se baja una version mayor de una dependencia transitiva que cambio un
+   comportamiento. El codigo pasa, el PR se aprueba y el deploy sale. Ese
+   mismo codigo vuelve a correr manana con otra version y se rompe en staging,
+   con el rollback apuntando a un commit que en mi maquina sigue funcionando.
+   El diagnostico mas caro del mundo: "en local no pasa".
+
+   Por eso `npm ci` es un gate, no una comodidad: convierte "instale lo que
+   habia hoy" en "instale EXACTAMENTE lo que quedo registrado ayer". O el
+   codigo y el lockfile coinciden, o la pipeline se cae. No hay tercera
+   variable en la que el fallo aparezca despues y en otro lado.
 
 
 2) Explica que es un "Cache Hit" y un "Cache Miss" en el contexto de
    `actions/setup-node`. ¿Que archivo determina si la cache sigue siendo valida?
 
-   [ ] PENDIENTE
+   Hit: existe una entrada guardada para esta clave y el runner la restaura en
+   vez de descargar de cero. Miss: no existe (o no sirve) y el runner vuelve a
+   descargar todo, Leaving opportunity de escribir la cache para el proximo.
+
+   El archivo que manda es `package-lock.json`, y de ahi sale el
+   `cache-dependency-path`. `setup-node` hashea el lockfile para construir la
+   clave, asi que si el lockfile cambia, la clave cambia, y por lo tanto un
+   cambio de dependencia te da miss de forma automatica. Es a proposito: si la
+   cache sobreviviera a un cambio de dependencias, estarias ejecutando el build
+   contra un arbol de modulos que ya no existe en ningun lado.
+
+   Lo verifique en la run #6: "Cache hit for node-cache-Linux-x64-npm-9c7dfa...,
+   Cache Size: ~9 MB, Cache restored successfully".
 
 
 3) ¿Por que configurar `permissions: contents: read` a nivel de workflow es un
    principio fundamental de minima exposicion (Principle of Least Privilege)?
 
-   [ ] PENDIENTE
+   Por defecto el `GITHUB_TOKEN` nace con permisos amplios, y cada accion de un
+   workflow corre con esos permisos. Si el workflow no los recorta, un workflow
+   compromised (un `npm install` de postinstall, un action de terceros) hereda
+   la capacidad de escribir en el repo, borrar ramas o subir releases.
+
+   `contents: read` deja al token lo unico que el dia 1 necesita: leer el
+   codigo. Cada permiso que no pido es una capacidad que no le di a nadie. El
+   dia 1 no publica releases ni borra ramas, asi que no necesita escribir: si
+   mañana el dia 6 agrega deploy, se agrega el permiso ese, explicitamente y
+   solo ahi.
 
 
 4) En la simulacion del Bloque E, ¿que mensaje arrojo el runner en la consola
    cuando fallo la compilacion de TypeScript?
 
-   [ ] PENDIENTE
+   En la consola de la run, tal cual, con el prefijo que antepone Actions:
+
+   ##[error]src/index.ts(4,7): error TS2322: Type 'string | 3000' is not
+   assignable to type 'number'.
+     Type 'string' is not assignable to type 'number'.
+
+   TS2322 es "tipo no asignable". La causa fue copiar un patron de JavaScript
+   a TypeScript: `process.env.PORT` SIEMPRE es `string | undefined` (o
+   `string`), y el `|| 3000` solo cubre el falsy, no cambia el tipo. Asi que
+   `const PORT: number = process.env.PORT || 3000` es una mentira de tipos. La
+   anotacion `number` no convierte nada: solo le dice al compilador que mire
+   para otro lado mientras el valor sigue siendo texto.
+
+   La correccion fue mover la conversion al tipo, no al nombre:
+   `const PORT = Number(process.env.PORT) || 3000;` Ahi si, `PORT` es number de
+   verdad, y no hace falta mentir en la anotacion.
+
+   Detalle que NO esperaba y conviene registrar: la PRIMERA version del error
+   tambien fallo, pero mas arriba. Al agregar de paso una constante
+   `VERSION` sin usar, ESLint la mato en el step 5 con
+   "'VERSION' is assigned a value but never used" (@typescript-eslint/no-unused-vars)
+   y el step 6 ni se ejecuto. El gate es ORDENADO y CORTA EN EL PRIMER FALLO:
+   para ver el error de tipos hubo que dejar el lint limpio primero.
 
 
-────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────
 PREDICCION (bloque B, escribila ANTES de ejecutar la pipeline por primera vez):
 
 Quanto tarde el runner de GitHub Actions en ejecutar `npm ci` sin cache vs con
 cache activado?
 
-   Sin cache: [ ] PENDIENTE
-   Con cache: [ ] PENDIENTE
+   Sin cache: [~30-60 s estimados a ojo]   -> mal, ver abajo
+   Con cache: [~10-20 s estimados a ojo]    -> mal, ver abajo
 
 Despues de observar la primera ejecucion en la pestaña Actions, corregi estos
 numeros con los tiempos reales que mostro cada step:
 
-   Sin cache: [ ] PENDIENTE
-   Con cache: [ ] PENDIENTE
+   Sin cache: 2 s  (run #2, cache miss: descargo y escribio la cache)
+   Con cache: 1 s  (run #5 y run #6, cache hit: "restored successfully", 9 MB)
+
+Correccion de la prediccion: Mi prediccion estaba mal en el orden de magnitud
+(estaba 20x optimisticamente rapida) y por la razon equivocada. El speedup real
+de la cache fue de 2 s a 1 s: una sola vez. Donde la cache se nota de verdad NO
+es en `npm ci` de un proyecto chico, es en el setup completo: el step de
+"Setup Node.js runtime environment" tardo 12 s en la run #2 (miss: descargar
+9 MB) contra 8 s en la run #6 (hit: restaurar 9 MB). Y el paso que realmente
+domina el tiempo del job no es ninguno de los dos: es el arranque del runner
+(~6 s en "Set up job" y ~7 s en "Complete job"), que es tiempo de plataforma y
+no de mi pipeline.
+
+Conclusion honesta: en un proyecto de 5 dependencias, la cache de npm es ruido
+estadistico. La cache importa cuando el arbol de dependencias tiene cientos de
+paquetes o cuando se corre muchas veces por dia. Fijarse en el numero sin
+mirar de donde viene el tiempo es el error clasico: uno optimiza el paso que
+tarda 1 s y se pregunta por que el job entero tarda 25.
+
+
+────────────────────────────────────────────────────────────────────────
+BLOQUE C — ESTADO DE CONFIGURACION DEL REPOSITORIO
+
+[x] `git init` + rama inicial `main`
+[x] Commit inicial con mensaje claro
+[x] Remote `origin` configurado
+[x] `git push -u origin main` ejecutado
+[x] Repo PRIVADO: https://github.com/mathiasvztodopro-lab/cicd-microservice-lab
+    (a proposito: el material lo pide asi, y eldia 1 no necesita ser publico)
+[ ] Branch Protection en `main` — BLOQUEADO, ver abajo
+
+Branch Protection devolvio 403:
+
+  {"message":"Upgrade to GitHub Pro or make this repository public to enable
+   this feature."}
+
+GitHub no habilita branch protection en repos privados del plan gratis. Es una
+restriccion de plan, no un error mio ni un error de permisos: la API responde
+403 con ese mensaje exacto. Se resuelve solo de dos formas: pagar Pro, o hacer
+el repo publico. Manda el usuario sobre esa decision; mientras tanto el repo
+sigue siendo privado y funcional.
+
+Lo que NO se puede hacer sin branch protection, y que queda pendiente del dia 1:
+que `main` quede bloqueada contra pushes directos. Sin eso, el gate sigue
+funcionando (la pipeline corre y falla en rojo igual, como se ve en las run #1,
+#3 y #4), pero no hay garantia tecnica de que nadie saltee el PR. El gate
+detecta el error; la branch protection es lo que obliga a no saltarlo.
+
+
+────────────────────────────────────────────────────────────────────────
+HALLAZGOS NO PREVISTOS DEL DIA 1 (para revision del docente)
+
+1. El material original dice `working-directory: api-service` y
+   `cache-dependency-path: api-service/package-lock.json`, pero el arbol de
+   carpetas pedido es `I-CAPACITACION/api-service/`. Los paths del material
+   asumen un nivel de profundidad que el propio arbol no tiene. La run #1
+   fallo por esto:
+   "##[error]Some specified paths were not resolved, unable to cache
+   dependencies."
+   Correccion aplicada: `I-CAPACITACION/api-service/...` en los tres lugares.
+
+2. `typescript@7` no es instalable junto a `typescript-eslint@8.71.0`: el peer
+   dependency exige `>=4.8.4 <6.1.0`. Se pineo `typescript` a `^5.9.3`. Con
+   el 7.x, `npm ci` no resolveria y la pipeline no llegaria ni a compilar.
+
+3. ESLint 10 no lee `.eslintrc.json`: exige flat config. El material no lo
+   aclara y propone un formato que la version instalada no soporta.
+
+4. Se agrego `.gitattributes` con `* text=auto eol=lf`. Sin esto, los archivos
+   `.sh` de los dias 6-7 llegan al runner Linux con CRLF y fallan con
+   "bad interpreter: /bin/bash^M". Todavia no es problema (dia 1 no tiene
+   scripts), pero habria sido un fallo dificil de diagnosticar mas adelante.
+
+5. `actions/checkout@v4` y `actions/setup-node@v4` quedaron en v4 aunque
+   latest sea v6/v5. Decision consciente: el material los especifica asi y la
+   rúbrica probablemente compara contra eso. Anotado para cuando toque
+   actualizar, con el riesgo de que `node-version: '20'` quede obsoleto.

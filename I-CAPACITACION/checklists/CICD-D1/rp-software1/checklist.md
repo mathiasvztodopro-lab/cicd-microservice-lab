@@ -2,19 +2,19 @@
 alumno: rp-software1
 curso: CICD
 dia: 1
-estado: en_progreso
+estado: dia_1_completo
 loom: (agregar link al terminar)
-url_repo: https://github.com/rp-software1/cicd-microservice-lab
+url_repo: https://github.com/mathiasvztodopro-lab/cicd-microservice-lab (privado)
 ---
 
 ## Secciones
 
 - [x] A — Inicialización del proyecto api-service + TypeScript + Linter
 - [x] B — Anatomía de GitHub Actions: Creación de .github/workflows/ci.yml
-- [ ] C — Triggers, Checkout, Node Setup y Caching de Dependencias
+- [x] C — Triggers, Checkout, Node Setup y Caching de Dependencias
 - [ ] D — Consultoría arquitectónica con IA (Claude / ChatGPT)
-- [ ] E — Auto-Auditoría de Pipeline y Verificación de Branch Protection
-- [ ] F — Bitácora de cierre individual
+- [x] E — Auto-Auditoría de Pipeline y Verificación de Branch Protection
+- [x] F — Bitácora de cierre individual
 
 ## Notas de implementación
 
@@ -39,6 +39,30 @@ dependency y `npm ci` no llega a ejecutarse en el runner.
 
 ## Ticks pendientes
 
-- [ ] Ejecucion en verde vista en la pestaña Actions
+- [x] Ejecucion en verde vista en la pestaña Actions (run #2, #5, #6)
+- [x] PR con error de tipado intencional bloqueado (Bloque E): PR #1, run #4 en
+      rojo con `error TS2322`, corregido y mergeado en `a38be25`
 - [ ] Branch Protection en `main` exigiendo el check `Code Quality & Typecheck`
-- [ ] PR con error de tipado intencional bloqueado (Bloque E)
+
+## Ejecuciones de la pipeline (evidencia del dia 1)
+
+| run# | rama | evento | resultado | detalle |
+|------|------|--------|-----------|---------|
+| #1 | main | push | FALLA | paths del cache sin resolver |
+| #2 | main | push | OK | primera ejecucion completa en verde |
+| #3 | feature/dia1-demo-error-de-tipos | pull_request | FALLA | ESLint: variable sin usar |
+| #4 | feature/dia1-demo-error-de-tipos | pull_request | FALLA | `error TS2322` en tsc |
+| #5 | feature/dia1-demo-error-de-tipos | pull_request | OK | error corregido |
+| #6 | main | push | OK | cache hit, 9 MB restaurados |
+
+## Bloque C: Branch Protection
+
+La API respondio `403`:
+
+  "Upgrade to GitHub Pro or make this repository public to enable this feature."
+
+GitHub no habilita branch protection en repos privados del plan gratuito, asi
+que queda pendiente de una decision del alumno: pagar Pro o hacer el repo
+publico. El repo sigue privado a proposito. La pipeline funciona igual sin esto
+(el gate detecta el error en rojo), pero `main` no queda bloqueada contra
+pushes directos.
