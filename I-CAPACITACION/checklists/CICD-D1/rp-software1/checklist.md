@@ -4,7 +4,7 @@ curso: CICD
 dia: 1
 estado: dia_1_completo
 loom: (agregar link al terminar)
-url_repo: https://github.com/mathiasvztodopro-lab/cicd-microservice-lab (privado)
+url_repo: https://github.com/mathiasvztodopro-lab/cicd-microservice-lab (publico)
 ---
 
 ## Secciones
@@ -62,10 +62,10 @@ dependency y `npm ci` no llega a ejecutarse en el runner.
 
 ## Ticks pendientes
 
-- [x] Ejecucion en verde vista en la pestaña Actions (run #2, #5, #6)
+- [x] Ejecucion en verde vista en la pestaña Actions (runs #2, #5, #6, #7, #8)
 - [x] PR con error de tipado intencional bloqueado (Bloque E): PR #1, run #4 en
       rojo con `error TS2322`, corregido y mergeado en `a38be25`
-- [ ] Branch Protection en `main` exigiendo el check `Code Quality & Typecheck`
+- [x] Branch Protection en `main` con las 4 casillas del 6.3.3
 
 ## Ejecuciones de la pipeline (evidencia del dia 1)
 
@@ -77,15 +77,28 @@ dependency y `npm ci` no llega a ejecutarse en el runner.
 | #4 | feature/dia1-demo-error-de-tipos | pull_request | FALLA | `error TS2322` en tsc |
 | #5 | feature/dia1-demo-error-de-tipos | pull_request | OK | error corregido |
 | #6 | main | push | OK | cache hit, 9 MB restaurados |
+| #7 | main | push | OK | bitacora con evidencia real |
+| #8 | main | push | OK | hallazgo del glob documentado |
 
-## Bloque C: Branch Protection
+## Bloque C — 6.3.3: Branch Protection (COMPLETO)
 
-La API respondio `403`:
+El 6.3.1 del material pide un repositorio **publico**, y eso importa: GitHub no
+habilita Branch Protection en repos privados del plan gratuito. Con el repo en
+privado la API devolvia `403 - "Upgrade to GitHub Pro or make this repository
+public to enable this feature"`. Al pasar el repo a publico, la regla se creo
+sin costo, tal como pide la guia.
 
-  "Upgrade to GitHub Pro or make this repository public to enable this feature."
+Las 4 casillas del material, verificadas contra la API:
 
-GitHub no habilita branch protection en repos privados del plan gratuito, asi
-que queda pendiente de una decision del alumno: pagar Pro o hacer el repo
-publico. El repo sigue privado a proposito. La pipeline funciona igual sin esto
-(el gate detecta el error en rojo), pero `main` no queda bloqueada contra
-pushes directos.
+| Casilla del material | Estado | Como quedo |
+|---|---|---|
+| Require a pull request before merging | OK | `required_approving_review_count: 0` |
+| Require status checks to pass before merging | OK | check requerido: `Code Quality & Typecheck` |
+| (check seleccionado) | OK | coincide exacto con el `name:` del job en `ci.yml` |
+| Do not allow bypassing the above settings | OK | `enforce_admins: true` |
+
+No se marco "Require branches to be up to date" porque el material no lo pide.
+
+Prueba funcional: un `git push` directo a `main` fue rechazado por la regla
+(`protected branch hook declined`), y los cambios de documentacion tuvieron que
+entrar por PR. Eso demuestra que la regla es vinculante y no un adorno.

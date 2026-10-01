@@ -141,26 +141,50 @@ BLOQUE C — ESTADO DE CONFIGURACION DEL REPOSITORIO
 [x] Commit inicial con mensaje claro
 [x] Remote `origin` configurado
 [x] `git push -u origin main` ejecutado
-[x] Repo PRIVADO: https://github.com/mathiasvztodopro-lab/cicd-microservice-lab
-    (a proposito: el material lo pide asi, y eldia 1 no necesita ser publico)
-[ ] Branch Protection en `main` — BLOQUEADO, ver abajo
+[x] Repo PUBLICO: https://github.com/mathiasvztodopro-lab/cicd-microservice-lab
+[x] Branch Protection en `main` con las 4 casillas del 6.3.3
 
-Branch Protection devolvio 403:
+Nota sobre la visibilidad: empece con el repo en privado y el paso 3 se bloqueo
+(ver abajo). El 6.3.1 del material pide un repositorio PUBLICO, y esa no es una
+casilla decorativa: es lo que habilita Branch Protection en el plan gratuito.
+Pasar el repo a publico no tuvo costo y fue lo que destrabo el paso.
 
-  {"message":"Upgrade to GitHub Pro or make this repository public to enable
-   this feature."}
+Branch Protection, primera intentona en repo privado:
 
-GitHub no habilita branch protection en repos privados del plan gratis. Es una
-restriccion de plan, no un error mio ni un error de permisos: la API responde
-403 con ese mensaje exacto. Se resuelve solo de dos formas: pagar Pro, o hacer
-el repo publico. Manda el usuario sobre esa decision; mientras tanto el repo
-sigue siendo privado y funcional.
+  HTTP 403 — {"message":"Upgrade to GitHub Pro or make this repository public to
+   enable this feature."}
 
-Lo que NO se puede hacer sin branch protection, y que queda pendiente del dia 1:
-que `main` quede bloqueada contra pushes directos. Sin eso, el gate sigue
-funcionando (la pipeline corre y falla en rojo igual, como se ve en las run #1,
-#3 y #4), pero no hay garantia tecnica de que nadie saltee el PR. El gate
-detecta el error; la branch protection es lo que obliga a no saltarlo.
+GitHub no habilita branch protection en repos privados del plan gratis: se
+resuelve pagando Pro o publicando el repo. Con el repo ya publico, las 4
+casillas del material quedaron asi (verificado contra la API):
+
+| Casilla del material                                | Como quedo |
+|-----------------------------------------------------|------------|
+| Require a pull request before merging               | activa, 0 aprobaciones requeridas |
+| Require status checks to pass before merging        | activa |
+| check: "Code Quality & Typecheck"                   | seleccionado |
+| Do not allow bypassing the above settings           | activa (`enforce_admins`) |
+
+Dos decisiones que tome leyendo el material al pie de la letra:
+- 0 aprobaciones requeridas: el material pide que exista un PR, no que alguien
+  mas lo apruebe. Es un trabajo individual, asi que exigir un revisor extra
+  seria agregar una regla que la guia no pide.
+- NO marque "Require branches to be up to date before merging": el material no
+  la menciona.
+
+Un detalle que no era obvio y que conviene registrar: el nombre del check tiene
+que coincidir EXACTO con el `name:` del job en `ci.yml`. Si el job se llamara
+distinto, la regla quedaria esperando un status check que nunca llega y el
+merge quedaria bloqueado para siempre. Ademas el check tiene que haber corrido
+al menos una vez para poder seleccionarlo, asi que el orden importa: primero la
+primera ejecucion de la pipeline, despues la regla.
+
+Prueba funcional de que la regla es vinculante (esto es lo que la convierte en
+gate y no en adorno): un `git push` directo a `main` fue RECHAZADO por la regla
+(`protected branch hook declined`), y los cambios de documentacion de este
+mismo cierre tuvieron que entrar por Pull Request. A partir de aca todo cambio
+pasa por PR, incluidos los mios como administrador: eso es exactamente lo que
+pide el material con "Do not allow bypassing the above settings".
 
 
 ────────────────────────────────────────────────────────────────────────
