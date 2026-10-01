@@ -62,10 +62,11 @@ dependency y `npm ci` no llega a ejecutarse en el runner.
 
 ## Ticks pendientes
 
-- [x] Ejecucion en verde vista en la pestaña Actions (runs #2, #5, #6, #7, #8)
+- [x] Ejecucion en verde vista en la pestaña Actions (runs #2, #5, #6, #7, #8, #9, #10)
 - [x] PR con error de tipado intencional bloqueado (Bloque E): PR #1, run #4 en
       rojo con `error TS2322`, corregido y mergeado en `a38be25`
-- [x] Branch Protection en `main` con las 4 casillas del 6.3.3
+- [x] Branch Protection en `main` con las 4 casillas del 6.3.3, probada con un
+      PR real de documentacion (PR #2, run #9) mergeado en `a288c22`
 
 ## Ejecuciones de la pipeline (evidencia del dia 1)
 
@@ -79,6 +80,10 @@ dependency y `npm ci` no llega a ejecutarse en el runner.
 | #6 | main | push | OK | cache hit, 9 MB restaurados |
 | #7 | main | push | OK | bitacora con evidencia real |
 | #8 | main | push | OK | hallazgo del glob documentado |
+| #9 | docs/dia1-branch-protection | pull_request | OK | PR #2: valida el status check requerido |
+| #10 | main | push | OK | post-merge de PR #2 en `a288c22` |
+
+Total: 10 runs, 10/10 auditadas por API (`created_at`, `head_sha`, `conclusion`).
 
 ## Bloque C — 6.3.3: Branch Protection (COMPLETO)
 
