@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { app } from '../src/index';
+import { calculateMetrics } from '../src/app';
 
 describe('API Service - Test Suite Automatizada', () => {
   describe('GET /health', () => {
@@ -44,6 +45,21 @@ describe('API Service - Test Suite Automatizada', () => {
     it('debe responder con 404 ante rutas no registradas', async () => {
       const response = await request(app).get('/ruta-fantasma-inexistente');
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe('calculateMetrics() - cierre del Bloque E', () => {
+    it('debe devolver el total y el promedio de un arreglo con datos', () => {
+      expect(calculateMetrics([1, 2, 3, 4])).toEqual({ total: 10, average: 2.5 });
+    });
+
+    it('debe devolver ceros para un arreglo vacio', () => {
+      expect(calculateMetrics([])).toEqual({ total: 0, average: 0 });
+    });
+
+    it('debe devolver ceros ante una entrada invalida (null)', () => {
+      // @ts-expect-error: se prueba a proposito la guarda `!data`
+      expect(calculateMetrics(null)).toEqual({ total: 0, average: 0 });
     });
   });
 });
