@@ -1,0 +1,17 @@
+(agregar aqui el link publico del Loom del Dia 2)
+
+LINK: (pendiente)
+
+Herramienta: Loom (loom.com). El link va en ESTE archivo, en la linea de arriba.
+
+Estructura obligatoria del video (3 a 4 minutos):
+- Minuto 1: explicar a camara, SIN leer, que es un Quality Gate y por que la
+  cobertura automatica previene la degradacion del codigo.
+- Minutos 2-3: mostrar en la pestana Actions el matrix Node 18/20/22 en verde
+  (los 4 checks: Code Quality & Typecheck + las 3 variantes) y descargar EN VIVO
+  el artefacto de cobertura, abriendo el reporte HTML.
+- Minuto 4: mostrar el PR que fallo por no alcanzar el 80%, senalando el log exacto
+  de Jest donde se activo el bloqueo (run #15 del PR #5).
+
+Ejemplo de formato:
+https://www.loom.com/share/<tu-id-aqui>
