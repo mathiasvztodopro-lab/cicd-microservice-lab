@@ -9,7 +9,8 @@
     "dev": "nodemon src/index.ts",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "test": "node -e \"console.log('Tests will be integrated in Day 2')\""
+    "test": "jest --detectOpenHandles",
+    "test:coverage": "jest --coverage --detectOpenHandles"
   },
   "keywords": [],
   "author": "rp-software1",
@@ -21,9 +22,14 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
     "@types/node": "^26.6.3",
+    "@types/supertest": "^7.2.1",
     "eslint": "^10.11.0",
+    "jest": "^30.5.2",
     "nodemon": "^3.1.14",
+    "supertest": "^7.3.1",
+    "ts-jest": "^29.4.14",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.71.0"

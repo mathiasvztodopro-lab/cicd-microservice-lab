@@ -1,4 +1,4 @@
-name: Continuous Integration - Lint & Build
+name: Continuous Integration - Quality & Matrix Testing
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
       - main
       - develop
 
-# Buenas prácticas de seguridad: restringir permisos del GITHUB_TOKEN
+# Buenas practicas de seguridad: restringir permisos del GITHUB_TOKEN
 permissions:
   contents: read
 
@@ -41,3 +41,41 @@ jobs:
       - name: Compile TypeScript to JavaScript (Typecheck)
         working-directory: I-CAPACITACION/api-service
         run: npm run build
+
+  automated-tests:
+    # El nombre del job genera el status check "Automated Tests (Node <version>)":
+    # es el que se exige en Branch Protection, asi que no se toca.
+    name: Automated Tests (Node ${{ matrix.node-version }})
+    needs: lint-and-compile # Solo corre si lint y typecheck pasaron primero
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false # Permite ver el resultado de las tres versiones aunque una falle
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+    steps:
+      - name: Checkout repository source code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: I-CAPACITACION/api-service/package-lock.json
+
+      - name: Clean install dependencies (deterministic)
+        working-directory: I-CAPACITACION/api-service
+        run: npm ci
+
+      - name: Run Test Suite with Coverage Threshold
+        working-directory: I-CAPACITACION/api-service
+        run: npm run test:coverage
+
+      - name: Upload Coverage Artifact (Node 20 only)
+        if: matrix.node-version == '20.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report-node-20
+          path: I-CAPACITACION/api-service/coverage/
+          retention-days: 7
