@@ -1,0 +1,208 @@
+BLOQUE D — CONSULTORIA ARQUITECTONICA CON IA
+Dia 2 de 7 | rp-software1 | curso: CICD
+
+CONTEXTO (estado real del repo al cierre del dia 2, para que las respuestas se lean
+contra la configuracion y no en abstracto)
+
+  Workflow:  "Continuous Integration - Quality & Matrix Testing"
+  job 1:     "Code Quality & Typecheck"   -> npm run lint + npm run build
+  job 2:     "Automated Tests (Node ${{ matrix.node-version }})"
+             needs: lint-and-compile
+             fail-fast: false
+             matrix.node-version: [18.x, 20.x, 22.x]
+             corre: npm run test:coverage  (jest --coverage --detectOpenHandles)
+             sube: upload-artifact@v4, nombre code-coverage-report-node-20,
+                   path I-CAPACITACION/api-service/coverage/, retention-days: 7,
+                   solo en Node 20 (if: matrix.node-version == '20.x')
+  Gate:      coverageThreshold.global = 80 en branches, functions, lines y statements
+  Suite:     7 tests con Jest + Supertest, 100% en las cuatro metricas
+  Evidencia: PR #5 v1 quedo en `blocked` por el gate (run #15) y se desbloqueo al
+             agregar los tests faltantes (run #16)
+
+────────────────────────────────────────────────────────────────────────
+
+1) ¿Qué es un "Flaky Test" (test intermitente), por qué es el veneno de las
+   pipelines de CI y qué estrategias existen para evitar que bloquee
+   despliegues sin perder rigor?
+
+Un flaky test es uno que pasa y falla sin que nadie haya tocado el codigo. El commit
+es el mismo, el arbol de dependencias es el mismo, y sin embargo el resultado
+cambia entre dos corridas. No es un test que falla siempre — eso es un bug, y es lo
+facil de debuggear — sino uno cuyo resultado depende del contexto de ejecucion.
+
+Causas tipicas, ordenadas por frecuencia:
+
+  - Orden y estado compartido. Un test escribe en una base, en un archivo o en un
+    modulo y no limpia; el siguiente hereda lo que quedo. Jest corre los tests de
+    un archivo en el mismo proceso, asi que el estado de uno es visible para el
+    siguiente. Pasa en local y falla en el runner porque el orden puede variar.
+  - Condiciones de carrera. Dos operaciones async que se pisan y una gana a veces:
+    el clasico "funciona 9 de cada 10 veces".
+  - Dependencias de red o de reloj. Una llamada a una API externa, un token que
+    expira, una asercion sobre la fecha. En local hay red rapida y en el runner no,
+    o al reves.
+  - Aleatoriedad sin semilla. `Math.random()` sin seed, `Date.now()`, orden de
+    `Object.keys()` no garantizado.
+  - `sleep` fijos. `await sleep(500)` para "darle tiempo" a algo. La maquina rapida
+    lo resuelve en 50 ms y la lenta no.
+  - Recursos del entorno. Un puerto ya ocupado, un archivo de lock, una variable de
+    ambiente que el runner define distinto a la local.
+
+Por que es veneno: no por los minutos que cuesta, sino porque destruye la SENAL.
+Cuando el CI se pone rojo por un motivo aleatorio, la primera reaccion aprendida del
+equipo es re-ejecutar el job. A la tercera vez que el rojo "se fue solo", re-ejecutar
+es un reflejo, y un reflejo es exactamente lo contrario de un gate. El resultado es
+que la pregunta de control pasa a ser "¿paso alguna vez?", y una prueba que puede
+pasar al tercer intento no dice nada. Peor todavia: entrena al equipo a mirar para
+otro lado cuando hay rojo de verdad. El dia que aparezca un fallo legitimo, nadie lo
+mira porque ya aprendieron que el rojo a veces es ruido. El costo real de un flaky
+test no es su tiempo de ejecucion: es que vuelve inservible el unico canal que
+tenia el equipo para saber si el codigo anda.
+
+Estrategias para contenerlo sin bajar el rigor:
+
+  1. Aislar el estado. Base nueva por test o `truncate` en `beforeEach`, archivo
+     temporal por test, nada de modulos mutables a nivel de archivo. Si un test
+     puede contaminar a otro, el problema es el diseno del test, no el flaky.
+  2. Inyectar lo no determinista. El reloj y la aleatoriedad entran por parametro,
+     no hardcodeados. Con la hora inyectada, un test que falla por fecha es un test
+     que falla siempre, y eso ya es debuggable.
+  3. Esperar por condicion, no por tiempo. En vez de `sleep(500)`, un poll con
+     timeout: esperar a que la fila exista, con 5 s de tope. El test espera lo que
+     necesita y falla rapido si no ocurre.
+  4. Retry acotado Y reportable. Es la palanca que todos conocen y hay que usarla
+     con las dos manos en la mesa: maximo 1 o 2 reintentos, log explicito de cada
+     reintento y medicion de la tasa de flake por test. Si un test necesita 5
+     reintentos, no es flaky: es un test roto con suerte.
+  5. Cuarentena con dueno y fecha. El test que se sabe intermitente se marca
+     (`test.failing`, `@quarantine`), se abre un issue asignado y deja de bloquear
+     el pipeline mientras tanto. La clave es que sea con dueno y con fecha: una
+     cuarentena sin responsable es el lugar donde mueren los tests que nadie sabe
+     arreglar.
+  6. Registrar la tasa, no la presencia. Un panel con "que porcentaje de corridas
+     del job fallo por flake", con nombre de test. Es el unico numero que
+     distingue "el CI esta verde" de "el CI esta verde por suerte".
+
+La clave que ordena todo esto, y que separa a un ingeniero de alguien que copio una
+respuesta: CONTENER SIN BAJAR EL RIGOR. Un retry silencioso no es una solucion, es
+un escondite — esconde el sintoma y deja el bug intacto, y cuando nadie mira ninguno
+de los dos durante tres meses, el flaky sigue ahi. Un flaky detectado, etiquetado,
+asignado y medido es un flaky con fecha de vencimiento. Un flaky re-ejecutado hasta
+que pasa es un flaky que se mudó del laboratorio al mundo real, donde no hay
+re-ejecucion.
+
+
+2) ¿Por qué se configuró `fail-fast: false` en la matriz y en qué casos convendría
+   ponerlo en `true`?
+
+`fail-fast: false` esta puesto para poder DIAGNOSTICAR, no para ser mas lento.
+
+Con el default (`fail-fast: true`), cuando una variante de la matriz falla, GitHub
+cancela las otras dos. El pipeline termina mas rapido: en vez de esperar tres
+suites, espera una. Ese argumento es real y no hay que disfrazarlo.
+
+Lo que se paga es informacion. Escenario concreto: el PR toca codigo que usa una
+API que cambio en Node 20. Con `true` falla Node 20, se cancelan 18 y 22, y el
+pipeline te dice "algo fallo". No te dice si fallo solo en la version que tocaste o
+en las tres. Con `false` ves las tres filas de la matriz: si fallan las tres, el
+bug es del codigo y el arreglo es de negocio; si falla una sola, es una
+incompatibilidad de esa version y el arreglo es tecnico. Cancelar las otras dos
+convierte un diagnostico en una adivinanza.
+
+En la run #15 no hubo nada que cancelar porque fallaron las tres: el Quality Gate
+bajo la cobertura y eso es independiente de la version de Node. Ahi `fail-fast:
+false` no aporto informacion y no costo nada. El caso donde importa es el otro.
+
+Cuándo conviene `true` de verdad:
+
+  - Cuando el tiempo es la restriccion dominante. Si cada runner cuesta y hay una
+    cola de PRs esperando, esperar tres minutos para ver un resultado que ya sabes
+    que es rojo es desperdicio con nombre propio. Con `true` el rojo aparece en T y
+    las otras variantes se cancelan en segundos.
+  - Cuando las variantes son equivalentes y caras. Si la suite de la matrix tarda
+    40 minutos y las tres dan el mismo resultado en cualquier escenario realista
+    (por ejemplo, solo se cambia la version de Node para una prueba de humo), el
+    panorama completo no aporta nada.
+  - Cuando la decision de verdad es binaria y urgente: "¿pasa o no pasa?". El
+    detalle de que version fallo se recupera despues re-ejecutando solo esa version.
+    La primera pregunta del pipeline nunca es esa.
+
+Regla practica: `fail-fast: false` para matrices cuyo objetivo es ENCONTRAR LA
+CAUSA; `fail-fast: true` para matrices cuyo objetivo es APROBAR O RECHAZAR RAPIDO.
+Este repo usa `false` porque el objetivo del dia 2 es el diagnostico: probar que el
+codigo funciona en tres versiones, no solo si funciona.
+
+
+3) Si la aplicación tuviera tests que requieran una base de datos (PostgreSQL o
+   Redis), ¿cómo se integran los "Service Containers" en GitHub Actions para no
+   depender de una BD externa en la nube?
+
+Service containers es la forma en que un job de GitHub Actions levanta su propia
+base de datos, en el mismo runner, sin que nadie tenga que mantener una BD en la
+nube.
+
+La mecanica es declararla en el bloque `services:` del job:
+
+```
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+```
+
+Y el job se conecta con `localhost:5432` usando las mismas credenciales, expuestas
+como variables de entorno para que la suite las lea sin hardcodearlas:
+
+```
+    env:
+      DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
+      NODE_ENV: test
+```
+
+El detalle que hace que esto funcione, y donde esta toda la diferencia entre
+"funciona" y "falla una de cada tres", es `options: --health-cmd`. Sin health
+check, el job arranca a correr tests en cuanto el contenedor aparece, y el
+contenedor no esta listo: Postgres todavia esta inicializando el cluster. El
+resultado es un test que falla con "connection refused" en la primera corrida y
+pasa en la segunda — un flaky test DECLARADO por el runner. Con `--health-cmd`, el
+runner ejecuta ese comando cada 10 segundos y no libera el job hasta que responde
+bien. El job no espera "un poco": espera a que la dependencia este sana.
+
+Para Redis es el mismo esquema con `redis:7-alpine` y `--health-cmd "redis-cli
+ping"`. Ahi hay una trampa tipica: el health command tiene que ser un comando que
+exista DENTRO de la imagen, y en la imagen oficial de Redis los binarios se compilan
+en `/usr/local/bin`, asi que segun la variante puede hacer falta la ruta absoluta.
+La buena noticia es que esa clase de error es ruidoso, no silencioso: si el health
+command no funciona, el contenedor queda `unhealthy` y el job falla de inmediato en
+lugar de producir un flaky.
+
+Por que esto es mejor que una BD en la nube, y no es una preferencia estetica:
+
+  - Reproducibilidad. La version exacta de la imagen (`postgres:16`) es la misma en
+    cada corrida y en cada maquina. Una BD compartida es una dependencia mutable.
+  - Aislamiento de estado. Cada job arranca de cero y termina destruido. No hay
+    residuo entre jobs, no hay un test que ensucia la base para el siguiente, y no
+    hace falta acordarse de limpiar. Es exactamente la propiedad que pedia el punto
+    anterior: si el estado no se comparte, no hay flaky por estado compartido.
+  - Aislamiento de red y de datos. El runner alcanza la BD porque el contenedor
+    comparte su red local, y el contenedor nunca sale del runner. Efecto
+    secundario util: los tests no pueden tocar datos reales por accidente, porque
+    si algo intenta escribir en "la BD de produccion" no la encuentra.
+  - Costo. Cero: los minutos del contenedor se facturan juntos con los del job.
+
+Lo que NO hay que hacer es usar las mismas credenciales en el service container que
+en un entorno real. Ahi conviene que sean efimeras y que vivan en el YAML, en claro y
+sin secrets, y eso es correcto justamente porque no hay nada que proteger: la
+seguridad de un dato que existe solo durante los 15 minutos del job es un problema
+que no existe. Si alguna vez aparece una credencial real en ese bloque, ahi si hay
+que moverla a secrets.

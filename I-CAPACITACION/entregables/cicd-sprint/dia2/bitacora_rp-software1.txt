@@ -1,0 +1,237 @@
+BLOQUE F — BITACORA DE CIERRE INDIVIDUAL
+Dia 2 de 7 | rp-software1 | curso: CICD
+
+Respondé estas 4 preguntas con tus palabras. El día 2 agrega la capa que convierte
+una pipeline en un gate: la cobertura medida, el umbral que se dispara solo y la
+evidencia que queda adjunta a cada commit. Justificá por qué el workflow está
+ordenado como está, no qué dice la documentación de GitHub.
+
+────────────────────────────────────────────────────────────────────────
+REGISTRO DE EVIDENCIA (commits y runs leídos de la API de GitHub)
+
+Repositorio:  https://github.com/mathiasvztodopro-lab/cicd-microservice-lab (publico)
+
+Cadena de main del día 2:
+  fcb4eb6  (cierre del Día 1)
+    -> 02188bf  merge PR #4   "feat(ci): Jest + Supertest con Quality Gate de
+                             cobertura y matrix Node 18/20/22"
+      -> 8e3958c  merge PR #5   "feat: add calculateMetrics with full test coverage"
+
+Commits de trabajo:
+  64bde70  PR #4  (Jest + Supertest + matrix + Quality Gate)
+  98f08f9  PR #5 v1  el que ROMPE el gate a propósito (calculateMetrics sin tests)
+  0e17b1a  PR #5 v2  agrega los tests que faltan y restaura la cobertura
+
+Workflow:     "Continuous Integration - Quality & Matrix Testing"
+  job 1  "Code Quality & Typecheck"                     (lint + tsc)
+  job 2  "Automated Tests (Node 18.x / 20.x / 22.x)"    (needs: job 1)
+         fail-fast: false, upload-artifact@v4 solo desde Node 20
+
+Total de runs del repositorio: 17
+
+| run# | rama                    | evento       | resultado | detalle |
+|------|-------------------------|--------------|-----------|---------|
+| #13  | feat/dia2-jest-matrix-ci | pull_request | OK        | PR #4: los 4 jobs en verde |
+| #14  | main                    | push         | OK        | post-merge de PR #4 (02188bf) |
+| #15  | feature/bypass-coverage | pull_request | FALLA     | PR #5 v1: lint OK, los 3 jobs del matrix FALLAN por cobertura |
+| #16  | feature/bypass-coverage | pull_request | OK        | PR #5 v2: cobertura restaurada, 4/4 verde |
+| #17  | main                    | push         | OK        | post-merge de PR #5 (8e3958c) |
+
+Log real de Jest cuando el gate bloqueó (run #15, job `Automated Tests (Node 20.x)`):
+
+    Jest: Coverage for statements (61.53%) does not meet "global" threshold (80%)
+    Jest: Coverage for branches (33.33%) does not meet "global" threshold (80%)
+    Jest: Coverage for lines (72.72%) does not meet "global" threshold (80%)
+    Jest: Coverage for functions (50%) does not meet "global" threshold (80%)
+    ##[error]Process completed with exit code 1.
+
+Estado del PR #5 en esa versión: `mergeable_state: blocked`. El check
+`Code Quality & Typecheck` pasó; los tres del matrix fallaron.
+
+Artefacto de cobertura:
+  nombre          code-coverage-report-node-20
+  peso            17 KB
+  origen          I-CAPACITACION/api-service/coverage/
+  subido por      solo el runner de Node 20 (`if: matrix.node-version == '20.x'`)
+  retención       retention-days: 7
+
+Umbral configurado en `jest.config.js`: `coverageThreshold.global` con branches,
+functions, lines y statements en 80. En verde local, con 7 tests:
+`All files | 100 | 100 | 100 | 100`.
+
+────────────────────────────────────────────────────────────────────────
+
+1) ¿Por qué es fundamental que el job de pruebas declare `needs: lint-and-compile`
+   en lugar de correr todo al mismo tiempo? (pensá en costos y tiempos de cómputo)
+
+Porque `needs` convierte cuatro jobs en una cadena y no en cuatro jobs sueltos.
+
+Sin `needs`, los cuatro jobs arrancan a la vez. O sea: en el segundo en que existe
+un `error TS2322`, ya hay tres runners haciendo `npm ci` y la suite completa de tests
+sobre un proyecto que ni siquiera compila. Los tres fallan, y fallan con errores de
+test, no con el error de tipos. El error real queda enterrado debajo de tres fallos
+derivados: el ruido tapa la señal. Peor todavía: se pagó el costo de tres runners
+para obtener una conclusión que el job del lint ya tenía hace treinta segundos.
+
+Con `needs: lint-and-compile`, el job barato corre primero — install, ESLint y tsc
+— y si pasa, recién ahí se despachan las tres variantes del matrix. Eso tiene dos
+efectos: uno de plata y uno de tiempo.
+
+De plata: los runners se facturan por minuto y, en un repo privado, la matriz
+multiplica por tres el costo de cada PR. Si el 40% de los PR se rompe por un error
+de tipos, la matriz está financiando tests que no podían pasar. En un repo público
+es gratis en dólares, pero el costo sigue existiendo y se paga en otra unidad: los
+runners públicos tienen un límite de concurrencia. Prender tres jobs en paralelo sin
+necesidad compite por ese pool y hace que esperen los jobs de otros PR. El
+desperdicio no desaparece por ser gratis, cambia de moneda.
+
+De tiempo: el feedback. Con el gate barato primero, el desarrollador ve la causa raíz
+en el tiempo del lint. Sin `needs`, tiene que esperar a que termine el job más lento
+de los tres para enterarse de algo que el lint ya sabía. En un flujo de revisión esa
+diferencia es la que hace que alguien mire el PR o que lo cierre y lo vuelva a abrir
+más tarde.
+
+Y hay una razón menos obvia: el `needs` vuelve legible el DAG del workflow. El orden
+de los gates queda escrito en la estructura del archivo y no en la buena voluntad de
+quien lo lee. Es el mismo criterio del Día 1 —el gate es ordenado y corta en el
+primer fallo— pero ahora está declarado en el `needs` en vez de esperarse del orden
+de escritura de las claves YAML.
+
+
+2) ¿Qué ventaja ofrece `strategy.matrix` frente a escribir tres jobs separados
+   manualmente en el YAML?
+
+Que la variante se define UNA vez y el workflow la expande. Con la matriz escribís
+una lista (`node-version: [18.x, 20.x, 22.x]`) y GitHub genera tres jobs. Eso compra
+tres cosas concretas.
+
+Una sola fuente de verdad. Agregar Node 24 es agregar un item al array. Con tres jobs
+escritos a mano, el día que quieras Node 24 tenés que replicar el bloque entero tres
+veces más, y el error clásico es el copiar-pegar que se olvidó de uno de los pasos.
+Ese error no rompe la pipeline: la deja en verde sin probar la versión nueva. Es el
+peor tipo de fallo, el que no se ve.
+
+El nombre del check se genera solo. El `name: Automated Tests (Node ${{
+matrix.node-version }})` se expande a `(Node 18.x)`, `(Node 20.x)` y `(Node 22.x)`.
+Eso importa específicamente por lo del Día 1: Branch Protection exige checks por
+nombre EXACTO, y con la matriz los tres nombres existen sin escribirlos a mano y sin
+acordarse de actualizar la regla de protección cuando la matriz cambia. Si el
+`name:` fuera fijo, los tres checks se pisarían entre sí y la regla solo podría
+exigir uno. Es la diferencia entre un gate que escala y uno que hay que mantener a
+mano cada vez que agregás una versión.
+
+Menos drift en los pasos. Los tres jobs comparten exactamente el mismo `checkout`,
+el mismo `setup-node`, el mismo `npm ci` y el mismo `test:coverage`. Si mañana
+agregás un flag de memoria a Node o subís la versión de `setup-node`, lo cambiás en
+un lugar y los tres quedan iguales. Con jobs manuales cada paso repetido tres veces
+es una oportunidad de que uno se quede viejo. El drift en un workflow es la forma
+típica de romper un repo sin que nadie lo decida: un job queda con `npm install`
+mientras los otros dos usan `npm ci`, y la pipeline sigue en verde.
+
+Y el otro detalle del bloque `strategy`, que es el que hace útil la lectura de la
+salida: `fail-fast: false`. El default de GitHub es `true`, o sea que el primer
+fallo cancela el resto de las variantes. Con `true` perdés la pregunta más
+interesante: ¿esto falla en una versión puntual o en todas? Con `false` las tres
+terminan y la respuesta está en la pantalla: si fallan las tres, el bug es real; si
+falla una sola, es regresión de esa versión. En la run #15 fallaron las tres, y esa
+era justamente la información que hacía falta para saber que el problema era
+`calculateMetrics` sin tests y no una incompatibilidad con Node 22.
+
+
+3) En la sección de la pestaña Actions, descargá el archivo zip generado por
+   `actions/upload-artifact`. ¿Qué contiene y cómo puede servirle a un equipo de QA?
+
+El zip se llama `code-coverage-report-node-20` y pesa 17 KB. Dentro viene el
+directorio `coverage/` completo, tal como lo dejó Jest con los tres reporters de
+`jest.config.js` (`text`, `lcov`, `json-summary`):
+
+  - `lcov-report/` — el reporte HTML (`index.html` + `app.ts.html`). Es la vista
+    navegable: abrís `index.html`, hacés clic en el archivo y ves el código fuente
+    con las líneas cubiertas en verde y las que no, en rojo.
+  - `lcov.info` — el mismo dato en formato LCOV, que es el que consumen Codecov,
+    SonarQube o una badge de cobertura.
+  - `coverage-summary.json` — el resumen por archivo y por métrica, para comparar
+    runs de forma programática.
+
+Para QA esto vale por dos razones concretas. Primera: es evidencia inmutable atada
+a un commit y a un run. El reporte no se regenera, no se puede reescribir, y
+`retention-days: 7` le pone fecha de vencimiento. Cuando aparece un bug en staging,
+el QA no necesita clonar el repo en la versión exacta ni re-ejecutar nada: descarga
+el zip de la run del commit desplegado y mira si esa línea estaba cubierta. Si
+estaba cubierta, el bug no es una línea sin test; si no lo estaba, ya sabés por
+dónde empezar. Segunda: permite comparar. Dos runs con 83% y 91% no dicen lo mismo
+según cuándo se miren; con el JSON de cada una se ve exactamente qué líneas se
+agregaron, y si se agregaron por código nuevo o por código viejo que nadie se
+molestó en cubrir.
+
+Y una decisión de diseño que vale la pena explicar, porque parece un error y no lo
+es: el artefacto se sube SOLO desde Node 20. Los tres runners ejecutan la misma
+suite contra el mismo código y generan exactamente el mismo directorio `coverage/`.
+Subirlo tres veces serían tres copias idénticas del mismo reporte en tres lugares
+distintos. Eso no agrega información, agrega ruido: después nadie sabe cuál de los
+tres es "el" reporte. Se sube uno y el nombre lo deja explícito
+(`code-coverage-report-node-20`) para que quede claro desde qué variante salió.
+
+
+4) Si un desarrollador intenta engañar al sistema escribiendo tests sin
+   aserciones (`expect()`), ¿el coverage aumenta? ¿Cómo se previene esto?
+
+Sí, el coverage aumenta. Y esa es la cosa más importante que hay que entender de la
+métrica: la cobertura mide EJECUCIÓN, no VERIFICACIÓN.
+
+Istanbul —la instrumentación que corre por debajo de Jest— clava contadores en el
+código fuente: en cada línea, en cada rama y en cada función. Cuando un test llama a
+`calculateMetrics([1, 2, 3])`, las líneas del cuerpo se ejecutaron, los contadores
+suben y el archivo aparece cubierto. Al mundo de la métrica le da exactamente lo
+mismo si el test después afirma `expect(true).toBe(true)` o no afirma nada. La
+instrumentación no puede distinguir "el test verificó que el total es 6" de "el test
+llamó la función y la miró". Lo único que ve es que hubo una llamada.
+
+El error conceptual es grave y es la distancia entre cobertura y calidad: un 100% de
+cobertura con tests vacíos no es un proyecto bien testeado, es un proyecto donde la
+métrica dejó de medir lo que dice medir. El número sube, y sube más rápido,
+mientras el producto se rompe igual.
+
+Cómo se previene, de menos a más efectiva:
+
+1) Regla de lint que exija al menos una aserción por test. `jest/expect-expect` (del
+   plugin `eslint-plugin-jest`) falla un `it()` que no contiene ningún `expect()`.
+   Es barata, es estática, y corta la mayoría de los casos. Ojo: es una heurística
+   de forma, no de fondo. Un test con un `expect()` de relleno y ninguna
+   verificación real la pasa igual.
+
+2) Mutation testing (Stryker). Es la que responde la pregunta correcta: no
+   "¿ejecutaste el código?" sino "¿tus tests detectan que el código cambió?".
+   Stryker muta el código fuente —cambia `+` por `-`, `>=` por `>`, borra un return—
+   y vuelve a correr la suite. Si un mutante sobrevive, es un test que no afirma
+   nada sobre esa línea aunque la métrica la cuente como cubierta. El mutation score
+   es la métrica que no se puede falsear con tests huecos.
+
+3) Code review de las aserciones. Es la capa humana y sigue siendo la que más
+   encuentra. Una sola pregunta en la revisión —"¿qué falla si esta función devuelve
+   otra cosa?"— desarma la mayoría de los tests decorativos.
+
+4) Tratar la cobertura como guía, no como meta. El número sirve para encontrar código
+   que nadie tocó; no sirve para certificar que el código está bien probado. Un gate
+   de 80% cumple la función de PREVENIR la degradación —si la cobertura baja, entró
+   algo nuevo sin tests— y no cumple la de garantizar correctitud. Si el número sube
+   y no hay una aserción nueva que lo explique, eso es señal de alarma, no de logro.
+
+
+────────────────────────────────────────────────────────────────────────
+REFLEXION
+
+Lo que me llevo del gate es una cosa incómoda: la cobertura puede mentir, y la
+forma exacta de mentir es subiendo. Un test que llama sin afirmar infla el número
+exactamente igual que un test que afirma de verdad, y la métrica no distingue los dos
+casos. Por lo tanto el 100% que muestra no es una garantía de nada. La forma de
+defenderse no es bajar el umbral ni pedir un número más alto: es poner al lado una
+métrica que no se puede falsear con tests huecos —el mutation score— y leer las dos.
+
+Lo que sí vi funcionar el Día 2 fue el bloqueo. En la run #15 el PR quedó en
+`blocked` no porque una persona lo mirara, sino porque una aserción de Jest comparó
+61.53% contra 80% y salió con exit code 1. Nadie discutió el número, nadie pidió
+excepción, y la corrección no fue tocar el umbral: fue escribir los tests que
+faltaban. Ese es el valor real de un Quality Gate: no es que la métrica sea buena,
+es que sea automática e inapelable. Un 80% que depende de que alguien se acuerde de
+mirar el reporte es un deseo. El mismo 80% con exit code 1 es una regla.
