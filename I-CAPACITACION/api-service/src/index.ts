@@ -1,27 +1,10 @@
-import express, { Request, Response } from 'express';
+import { app } from './app';
 
-export const app = express();
+// Se re-exporta para que el contrato de import del material (`../src/index`)
+// siga siendo valido sin arrastrar el arranque del servidor a los tests.
+export { app };
+
 const PORT = Number(process.env.PORT) || 3000;
-
-app.use(express.json());
-
-// Endpoint de observabilidad para el ciclo de vida CI/CD
-app.get('/health', (_req: Request, res: Response) => {
-  res.status(200).json({
-    status: 'ok',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    service: 'api-service',
-  });
-});
-
-app.get('/api/v1/info', (_req: Request, res: Response) => {
-  res.status(200).json({
-    name: 'CI/CD Microservice Base',
-    version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development',
-  });
-});
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
