@@ -1,0 +1,57 @@
+name: Docker Image Packaging & Publish to GHCR
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+
+# `packages: write` es lo que habilita la subida a GitHub Container Registry.
+# La credencial es el `secrets.GITHUB_TOKEN` nativo: no hay ningun secreto que
+# crear ni guardar a mano.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    name: Build & Push OCI Image to GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx (avanzado multi-plataforma y cache)
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags semanticos y etiquetas)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          # Desviacion de la guia: el microservicio no vive en la raiz del repo
+          # sino un nivel abajo, dentro de I-CAPACITACION/.
+          context: ./I-CAPACITACION/api-service
+          file: ./I-CAPACITACION/api-service/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

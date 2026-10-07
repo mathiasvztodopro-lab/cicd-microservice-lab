@@ -1,0 +1,12 @@
+﻿BLOQUE F — BITÁCORA TÉCNICA
+Día 3 de 7 | rp-software1 | curso: CICD
+
+CONTEXTO DE EJECUCIÓN
+- Docker Desktop 4.94.0, Engine 29.8.2 linux/amd64
+- Repo: https://github.com/mathiasvztodopro-lab/cicd-microservice-lab
+- Ruta: I-CAPACITACION/api-service
+- main 3b99d95, 19/19 runs verdes
+
+BLOQUE B: build exitoso; imagen 189.94 MB (<160 criterio con valor exacto); /health y /api/v1/info 200
+BLOQUE C: workflow docker-publish.yml con cache type=gha, paths corregidos
+BLOQUE A,D completados; B,E,F parciales hasta merge a main
