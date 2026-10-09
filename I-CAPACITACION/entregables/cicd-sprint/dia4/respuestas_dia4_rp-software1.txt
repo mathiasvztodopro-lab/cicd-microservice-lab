@@ -1,0 +1,5 @@
+﻿BLOQUE D — CONSULTORÍA ARQUITECTÓNICA
+Día 4 de 7 | rp-software1 | curso: CICD
+1. Diferencia entre Continuous Delivery y Continuous Deployment
+2. ¿Qué son GitHub Environments y por qué aislar secretos?
+3. Diferencia entre GitOps y CD tradicional (GitHub Actions)

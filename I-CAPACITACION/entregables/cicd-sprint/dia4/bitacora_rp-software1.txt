@@ -1,0 +1,5 @@
+﻿BLOQUE F — BITÁCORA TÉCNICA
+Día 4 de 7 | rp-software1 | curso: CICD
+- Estructura creada: cd-staging.yml, checklist D4, carpetas dia4
+- cd-staging.yml: skeleton con environment: staging, pull GHCR image, health check placeholder
+- Pendiente: configurar GitHub Environment staging + secrets/vars, desplegar a proveedor (Railway/Render), health check real, completar entregables D4
