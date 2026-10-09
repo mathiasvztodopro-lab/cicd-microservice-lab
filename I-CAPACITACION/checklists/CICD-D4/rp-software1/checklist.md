@@ -13,3 +13,7 @@ url_staging: (agregar URL pública de tu API corriendo en Staging)
 [ ] D - Consultoría arquitectónica con IA (Continuous Delivery vs Deployment y GitOps)
 [ ] E - Auto-Auditoría: Verificación del endpoint /health en el servidor en la nube
 [ ] F - Bitácora de cierre individual
+
+[~] B - cd-staging.yml actualizado a workflow_run post-docker-publish (pendiente configurar secrets/vars en environment staging)
+
+[x] D - Consultoría arquitectónica completada (respuestas_dia4_rp-software1.txt)
