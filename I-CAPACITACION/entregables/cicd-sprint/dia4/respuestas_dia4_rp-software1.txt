@@ -1,0 +1,21 @@
+﻿BLOQUE D — CONSULTORÍA ARQUITECTÓNICA
+Día 4 de 7 | rp-software1 | curso: CICD
+
+1. Diferencia entre Continuous Delivery y Continuous Deployment
+Continuous Delivery (CD): tras aprobar el pipeline de CI (tests, lint, build, imagen Docker), el despliegue a Staging es AUTOMÁTICO. El paso a Producción requiere aprobación humana (manual gate). Objetivo: tener software siempre listo para desplegar a producción.
+Continuous Deployment: tras CI exitoso, despliegue automático a Staging y también a Producción SIN aprobación manual (si todos los checks pasan). Mayor velocidad, menor fricción; requiere alta confianza en tests/smoke/health checks.
+
+En este sprint seguimos enfoque Continuous Delivery: el push a main dispara build+push a GHCR; cd-staging se ejecuta tras éxito (workflow_run) hacia staging, pero el pase a producción no está automatizado.
+
+2. ¿Qué son GitHub Environments y por qué aislar secretos?
+GitHub Environments (Settings > Environments): permiten definir ambientes aislados (staging, production) con sus propios secrets, variables (vars), protection rules (required reviewers, wait timer, branch restrictions).
+Razones para aislar secretos:
+- Principio de menor privilegio: credenciales de staging NO deben compartirse con production.
+- Auditabilidad: despliegues quedan vinculados al environment.
+- Protección: required reviewers evitan despliegues accidentales.
+- Seguridad: secretos no viven en código/archivos, solo accesibles al job asociado al environment correcto.
+
+3. Diferencia entre GitOps y CD tradicional (GitHub Actions)
+CD tradicional (GitHub Actions): runner externo orquesta el despliegue (curl webhook, ssh, CLI del proveedor). Estado deseado se refleja por acción del runner.
+GitOps: agente dentro del cluster (ArgoCD, Flux) observa repositorio Git (manifiestos/helm/kustomize). Cuando cambia la imagen/tag definida en Git, el agente sincroniza el cluster al estado deseado (pull-based). 
+Diferencias clave: GitOps tiene reconciliación continua (drift detection), single source of truth = Git, rollback = revertir commit; CD tradicional es push-based (runner empuja cambios). GitOps suele requerir mayor madurez (RBAC, cluster interno) vs GitHub Actions simple para PaaS (Railway/Render).

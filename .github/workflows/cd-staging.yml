@@ -1,0 +1,46 @@
+﻿name: Continuous Delivery - Deploy to Staging
+on:
+  workflow_run:
+    workflows: ["Docker Image Packaging & Publish to GHCR"]
+    types: [ completed ]
+    branches: [ main ]
+permissions:
+  contents: read
+  deployments: write
+jobs:
+  deploy-staging:
+    name: Deploy to Staging Environment
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    if: github.event.workflow_run.conclusion == "success"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Announce Deployment Start
+        run: |
+          echo "Iniciando Despliegue Continuo a STAGING"
+          echo "Entorno: ${{ vars.NODE_ENV }}"
+          echo "Servicio: ${{ vars.SERVICE_NAME }}"
+          echo "Commit SHA: ${{ github.event.workflow_run.head_sha }}"
+      - name: Trigger Cloud Platform Deployment
+        run: |
+          if [ -n "${{ secrets.DEPLOY_WEBHOOK_URL }}" ]; then
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}")
+            if [ "$RESPONSE" -ge 200 ] && [ "$RESPONSE" -lt 300 ]; then
+              echo "Despliegue disparado exitosamente (HTTP $RESPONSE)"
+            else
+              echo "Error al disparar despliegue: HTTP $RESPONSE"
+              exit 1
+            fi
+          else
+            echo "Simulacion de despliegue exitosa (sin webhook configurado)"
+          fi
+      - name: Await Container Boot
+        run: sleep 30
+      - name: Health check (post-deploy)
+        run: |
+          if [ -n "${{ vars.STAGING_URL }}" ]; then
+            curl -f "${{ vars.STAGING_URL }}/health" || (echo "Health check fallido" && exit 1)
+          else
+            echo "STAGING_URL no configurado; saltando health check real"
+          fi

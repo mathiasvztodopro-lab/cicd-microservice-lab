@@ -1,0 +1,241 @@
+BLOQUE D — CONSULTORIA ARQUITECTONICA CON IA
+Dia 3 de 7 | rp-software1 | curso: CICD
+
+CONTEXTO (estado real del repo al cierre del dia 3, para que las respuestas se lean
+contra la configuracion y no en abstracto)
+
+  Imagen base:  node:20-alpine en las DOS etapas del Dockerfile (multi-stage build)
+  Dockerfile:   I-CAPACITACION/api-service/Dockerfile, dos etapas
+     etapa 1 "builder": WORKDIR /usr/src/app
+                   COPY package*.json + tsconfig.json  ->  RUN npm ci
+                   COPY src/  ->  RUN npm run build (tsc)  ->  dist/
+     etapa 2 "runner":  ENV NODE_ENV=production, ENV PORT=3000
+                   COPY package*.json
+                   RUN npm ci --omit=dev && npm cache clean --force
+                   COPY --from=builder /usr/src/app/dist ./dist
+                   USER node  ->  EXPOSE 3000  ->  CMD ["node", "dist/index.js"]
+  .dockerignore:  node_modules, dist, coverage, .git, .github, *.log, .env, .env.*
+  Workflow:     "Docker Image Packaging & Publish to GHCR"
+                dispara en push a main y en tags v*.*.*
+                permissions: contents: read + packages: write
+                job build-and-push ("Build & Push OCI Image to GHCR"), ubuntu-latest
+                checkout@v4 -> setup-buildx-action@v3 -> login-action@v3
+                -> metadata-action@v5 -> build-push-action@v5
+  Login a GHCR: registry ghcr.io, username ${{ github.actor }},
+                password ${{ secrets.GITHUB_TOKEN }} — token nativo del job,
+                no hay PAT ni secreto que crear ni guardar a mano
+  Tags:         latest (solo en rama por defecto), sha-<short>, semver {{version}}
+  Contexto:     ./I-CAPACITACION/api-service — el microservicio NO esta en la raiz
+  Cache:        cache-from: type=gha   /   cache-to: type=gha,mode=max
+  App:          el JS compilado importa SOLO express (verificado en src/ y en dist/);
+                dotenv esta declarado en dependencies pero ningun modulo lo usa
+  PENDIENTE:    el build NO se ejecuto localmente — Docker no esta instalado en esta
+                maquina. El tamano final de la imagen todavia no se midio y por eso
+                este archivo no tira numeros de MB.
+
+────────────────────────────────────────────────────────────────────────
+
+1) ¿Qué vulnerabilidad crítica se previene al utilizar 'USER node' en lugar de
+   dejar el usuario root por defecto de Docker?
+
+Lo que se previene no es UN bug puntual: es una amplificacion. Docker corre como root
+(uid 0) porque es lo que trae la imagen base por defecto y porque casi todo el
+ecosistema de imagenes esta construido asumiendo ese contrato. El punto sensible es
+que, sin user namespaces, uid 0 dentro del contenedor es el mismo uid 0 sobre el kernel
+del host: Docker no remapea el usuario por defecto. El root del contenedor no es un root
+"de mentiritas", es el root real del lado del host.
+
+Que gana concretamente un atacante si logra comprometer la app y el proceso sigue vivo
+como root:
+
+  - Escritura donde no deberia. Todo lo montado dentro del contenedor queda con
+    permisos de escritura para el proceso: un volumen de datos, un directorio de
+    secretos, un socket. Root escribe.
+  - El socket de Docker. Si el socket del daemon quedo montado
+    (/var/run/docker.sock, algo comun cuando un pipeline o un stack de desarrollo se
+    auto-montan el socket), root puede hablar con el daemon, y "hablar con el daemon"
+    incluye crear otro contenedor privilegiado. De ahi sale el movimiento lateral entre
+    contenedores sin tocar un solo binario del host.
+  - Escalar dentro del contenedor y hacia afuera. Un kernel exploit — dirty pipe, un
+    bug de overlayfs, un CVE de red — necesita una pieza para pasar de usuario a root.
+    Ser root adentro es tener esa pieza gratis. Root por si solo NO alcanza para
+    escapar (hace falta el bug de kernel), pero sin el bug no pasa nada; con el bug,
+    ser root convierte un fallo parcial en uno total.
+  - Post-explotacion sin ruido. Un root toca /proc de otros procesos, borra logs, se
+    planta en memoria. Un uid 1000 no puede casi nada de eso.
+
+Con `USER node` el proceso corre como el usuario no privilegiado que YA existe en
+`node:20-alpine` (uid 1000), sin permisos de escritura sobre el sistema de archivos del
+propio contenedor. Y aca hay un matiz que conviene decir claro: el Dockerfile no crea
+ese usuario ni lo administra. La imagen oficial de Node lo tiene en su `/etc/passwd`
+porque lo necesita para sus propios usos. `USER node` no es una sentencia de
+provisionamiento, es una SELECCION: de los usuarios que ya tenes, uso este. Por eso
+son una linea y no un bloque de setup.
+
+El detalle del repo que hace que esto funcione sin romper nada: `WORKDIR /usr/src/app` lo
+crea la etapa builder corriendo como root, y el `COPY --from=builder ... ./dist` trae
+los archivos con esa misma propiedad. O sea, `/usr/src/app` es de root y el proceso
+corre como `node`. Y no hay conflicto, porque el unico comando de arranque es
+`node dist/index.js`: leer un archivo y escuchar en un puerto. `PORT=3000` esta por
+encima de 1024, asi que ni siquiera hace falta ser root para tomar el socket. La app
+arranca bien como uid 1000 exactamente porque su unica necesidad es LEER.
+
+Ahi esta el trade-off, y conviene verlo como decision y no como default: si manana esta
+app escribe logs a archivo o cachea algo en disco DENTRO del contenedor, va a romper con
+`EACCES` como `node`. Y la respuesta correcta a ese error no es volver a root, es montar
+un volumen con el owner correcto o escribir a stdout y dejar que el orquestador reparta.
+Volver a root para hacer desaparecer un `EACCES` es la clase de arreglo que te undo tres
+meses de hardening con una sola linea.
+
+Por que lo marco como defensa en profundidad y no como "el fix": `USER node` no impide
+que comprometan la app. Un RCE en tu Node lo sigue ejecutando el atacante. Lo que cambia
+es el TAMANO de la perdida. Es la linea de base de la garantia minima, no una barrera.
+Sumale lo que ya hace el multi-stage: la imagen final instala con `npm ci --omit=dev`,
+asi que typescript, jest, eslint, ts-node y los @types no existen dentro del contenedor.
+Al atacante que entro no le quedan herramientas de compilacion ni de testing para
+pivotear. Todo eso es un `RUN` y un `USER`, y ninguna linea de codigo de la aplicacion.
+
+
+2) ¿Cómo funciona la caché de capas 'type=gha' (GitHub Actions Cache) y por qué
+   acelera el build de Docker de minutos a segundos?
+
+Una imagen de Docker no es un bloque opaco: es una lista ordenada de capas, y cada capa
+guarda solo el diff respecto de su capa padre mas la referencia al padre. BuildKit
+calcula la identidad de cada capa a partir del CONTENIDO de esa capa y del contenido de
+la cadena de capas que la precede. Esa propiedad es toda la mecanica: si la instruccion
+y el padre no cambiaron, la capa es identica, y por lo tanto no hace falta volver a
+ejecutarla.
+
+Ahora, por que sin cache cada build de este repo arranca de cero. El runner de GitHub
+Actions es EFIMERO: la maquina se destruye cuando termina el job. La cache local del
+daemon de Docker vive en esa maquina y muere con ella. Entonces cada push a `main` esta
+descargando `node:20-alpine` de cero, resolviendo el arbol de `package-lock.json` de
+cero, bajando el arbol de `node_modules` completo de `npm ci` en las dos etapas,
+corriendo `tsc`, y recien ahi empezando a pushear a GHCR. Todo eso son minutos, y
+ninguno de esos pasos cambio desde el push anterior.
+
+`cache-from: type=gha` le dice a BuildKit: antes de ejecutar, busca en el servicio de
+cache de Actions las capas que matchean con lo que estoy por construir. La clave se arma
+por context mas la ref, asi que el cache del build de `main` se reutiliza en `main` y
+las ramas nuevas arrancan en frio — eso es por diseno, no es un bug. `cache-to:
+type=gha,mode=max` es la otra mitad, y es la que casi se olvida: hace que al terminar
+el job se exporten las capas a esa misma cache para el proximo build.
+
+El detalle de `mode=max` es el que hace que esto funcione en un multi-stage, y vale la
+pena mirarlo porque es donde se regalan los minutos. El default es `mode=min`, que
+exporta solo las capas de la imagen FINAL. En este repo la imagen final es la etapa
+`runner`: unas pocas capas. Las capas caras — el `npm ci` completo con typescript y jest,
+el `tsc` — viven en la etapa `builder`, y con `mode=min` no se guardan. `mode=max`
+exporta TODAS las capas intermedias tambien. Sin ese `max`, activaste la cache y igual
+pagarias el `npm ci` completo en cada build.
+
+De donde sale el salto de minutos a segundos, entonces, son tres cosas que se suman:
+
+  1. No se re-descarga la imagen base ni la capa de npm: se restauran de la cache.
+  2. `npm ci` no se vuelve a ejecutar, porque la capa `COPY package*.json` + `RUN npm ci`
+     no cambio. Es la razon por la que esa capa pesa tanto comparada con la de `src/`.
+  3. BuildKit no reconstruye hacia adelante de forma completa: re-ejecuta desde la
+     PRIMERA capa cuyo contenido cambio, hacia adelante, y reutiliza todo lo que viene
+     despues de esa que ya coincide. En el caso tipico de este repo — toco
+     `src/app.ts` y nada mas — la primera capa invalida es `COPY src/`, o sea que lo
+     unico que se re-ejecuta es el `tsc` y la copia de `dist/`.
+
+Y aca se conecta con el STOP1 de la guia, que es donde se ve que esto NO es una
+optimizacion cosmetica sino la condicion de posibilidad del cache. El Dockerfile copia
+`package*.json` y corre `npm ci` ANTES de `COPY src/`. Si el orden estuviera invertido,
+cada cambio de una sola linea en el codigo invalidaria `COPY src/`, y como `npm ci` y
+`tsc` van despues, TODAS las capas caras se invalidarian en cada push. La cache
+seguiria activada, correctamente configurada, y el build seguiria tardando minutos. El
+orden de las instrucciones es lo que decide si la cache te sirve o no.
+
+Vale separar tambien los dos roles, porque se confunden todo el tiempo: `cache-from` es
+la LECTURA y acelera ESTE build; `cache-to` es la ESCRITURA y acelera el SIGUIENTE.
+Olvidarse el `cache-to` produce el sintoma clasico: el primer build de cada job es lento,
+el que viene en el mismo workflow es rapido, y el del proximo push vuelve a empezar
+lento. Y ojo con el limite real: la cache tiene tope de tamaño y se descarta por LRU, asi
+que un miss varios builds despues es normal y no hay que depurar nada.
+
+Lo que la cache NO hace, y es el malentendido que importa: la cache no garantiza
+reproducibilidad ni que dos builds del mismo commit den el mismo contenido. La
+reproducibilidad viene de fijar la base por digest, y este repo usa el tag
+`node:20-alpine`, que es un tag flotante: no esta fijado a un digest. Lo que la cache
+hace es acelerar la velocidad del feedback, que es un objetivo distinto y tambien
+valioso. Que una cosa no sea la otra no la invalida.
+
+
+3) En entornos de alta seguridad empresarial, ¿por qué algunas organizaciones
+   prefieren imágenes 'distroless' (de Google) por encima de Alpine Linux?
+
+La diferencia de fondo no es "chica" contra "chica": es que Alpine tiene un ENTORNO
+COMPLETO para administrar y distroless no tiene nada que administrar.
+
+Empecemos por Alpine, porque es la base de este repo. Alpine usa musl libc en lugar de
+glibc. Ese es el origen de su volumen: el libc de musl esta escrito para
+ser chico, y el orden de magnitud que se suele citar para una base vacia es del orden de
+7 MB para Alpine contra del orden de 180 MB para una base glibc (estos son valores de
+referencia del ecosistema, NO medidos en este repo). En un despliegue con cientos de
+nodos ese delta se paga en disco, en tiempo de pull y en superficie de CVE. Pero musl no
+es un reemplazo exacto de glibc, y ahi esta la letra chica: `getaddrinfo` se comporta
+distinto en la resolucion de nombres, el soporte de locales es otro —musl en la
+practica ignora `LANG` para muchas cosas—, y los binarios o modulos nativos
+precompilados contra glibc no corren. Un `.node` compilado con `node-gyp` sobre glibc
+no carga en Alpine sin recompilar. Ese costo es real y es la razon por la que hay
+proyectos que explicitamente eligen no usar Alpine.
+
+Distroless va al otro extremo: la imagen contiene el runtime y tu app, y nada mas. Sin
+shell, sin gestor de paquetes, sin `sh`, sin utilidades basicas. No es "una Alpine sin
+todo lo que no usas": es una decision de diseño donde lo que no se necesita no se
+empaqueta. El kernel sigue siendo el del host — distroless no virtualiza el kernel, no
+tiene uno propio — lo que se elimina es el userspace.
+
+La ventaja de seguridad no es esoterica, sale de una cuenta simple: cada binario que
+metes en la imagen es una superficie de ataque y una clase de bugs. Sacar el shell no es
+cosmetica, es eliminar la herramienta de post-explotacion mas usada que existe. Si un
+atacante logra ejecucion de codigo en un Alpine, lo primero que hace es abrir un shell
+para orientarse. En distroless no hay shell al que meterse. Ademas estas imagenes
+arrancan como no-root por defecto, que es la misma linea que discutimos en la pregunta 1
+pero resuelta por la imagen base en lugar de por tu Dockerfile.
+
+El precio se paga exactamente cuando algo se rompe. Con Alpine: `docker exec -it <id> sh`
+y en tres comandos ves si el archivo existe, si el puerto escucha, que hay en el log del
+proceso. Con distroless: no tenes shell ni `ls` ni `cat` ni `curl` ni `ps`. Si el
+contenedor no levanta, tu unica salida es el stream de logs. Eso es un costo operativo
+concreto en un incidente a las 3 de la mañana, y no es un costo chico.
+
+Y sin embargo hay organizaciones que lo pagan, y la razon es que ya tienen la respuesta
+construida: imagenes de debug generadas desde el mismo build, un sidecar de diagnostico,
+o logs estructurados emitidos desde el codigo. Si esa respuesta existe, el trade-off
+deja de ser "debuggear es imposible" y pasa a ser "debuggear cuesta un paso mas". El
+criterio de decision honesto no es "distroless es mejor": es "cuanto le cuesta al
+equipo el proceso de diagnostico". Si es mucho, porque dependes de `docker exec` para
+todo, distroless
+te va a doler. Si ya tenes telemetria y tus imagenes de debug, te compra una superficie
+de ataque mas chica a cambio de casi nada.
+
+Este repo eligio `node:20-alpine`, y para este servicio concreto es la decision
+correcta: la app compilada importa solo `express`, no hay modulos nativos que compilar
+contra musl, y un microservicio de este tamano no justifica quedarse sin shell.
+Sumale `USER node`, y el resultado esta bastante mas lejos de root que la imagen que
+teniamos antes del dia de hoy. Para un servicio que va a produccion en un cluster donde
+alguien va a necesitar `exec` una noche de incidente, Alpine con un usuario no
+privilegiado es el equilibrio correcto. Distroless es la respuesta cuando el cluster es
+grande, la superficie se paga sola y el diagnostico ya no depende de meterse adentro.
+
+
+Cierre — que cambia cuando el codigo pasa a ser un artefacto
+
+El criterio cambia de pregunta. Antes la pregunta era "compila y los tests pasan?", que
+es una pregunta de ESTADO y se responde mirando el ultimo job verde. A partir de hoy la
+pregunta es "este tag apunta al mismo contenido que verifiqué?", que es una pregunta de
+IDENTIDAD. El tag `sha-<short>` que genera `metadata-action` existe justamente para eso:
+convierte el commit en un nombre verificable. Un artefacto inmutable no se re-etiqueta
+entre la verificacion y el despliegue — o si se re-etiqueta, deja de ser inmutable y el
+control se cae solo. Por eso el cache de capas y el `USER node` ya no son decisiones
+sobre tu maquina: son decisiones sobre EL OBJETO que se despliega. Un `USER node` mal
+puesto no falla en el pipeline, falla cuando ya estas en produccion.
+
+Y por eso `USER node` es la linea de seguridad mas barata que vas a escribir hoy: es una
+linea, no toca codigo, no rompe tests, no cambia la API, no pide presupuesto, y lo que
+compra es que un compromiso de la aplicacion deje de ser un compromiso de root. Eso es
+un mal ratio costo/beneficio. El `USER node` no es la linea que te salva; es la que hace
+que, cuando algo falle, el costo de que falle sea un numero en vez de un incidente.

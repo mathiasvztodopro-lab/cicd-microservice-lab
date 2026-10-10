@@ -1,0 +1,23 @@
+(agregar aqui el link publico del Loom del Dia 3)
+
+LINK: (pendiente)
+
+Herramienta: Loom (loom.com). El link va en ESTE archivo, en la linea de arriba.
+
+Estructura obligatoria del video (3 a 4 minutos):
+- Minuto 1: explicar a camara, SIN leer, que es un Dockerfile multi-stage y por que
+  la imagen final NO lleva al compilador adentro: la etapa builder compila y la
+  etapa runner solo se queda con dist/ y las dependencias de produccion.
+- Minutos 2-3: mostrar la salida de `docker build` con las DOS etapas ("builder"
+  y "runner"), luego `docker images` con el tamano final de la imagen, y despues
+  `docker run -p 3000:3000` + el `curl http://localhost:3000/health` respondiendo
+  200. Ahi se ve que la imagen arranca de verdad.
+- Minuto 3 bis: mostrar en el navegador la pestana Packages de GitHub con la
+  imagen OCI ya publicada desde el workflow, con sus tags (latest y sha-xxx).
+- Minuto 4: mostrar `docker pull` de GHCR en una sesion limpia (confirma que la
+  imagen es publica y descargable) y responder de palabra las 3 preguntas del
+  Bloque D: por que `USER node`, como acelera la cache `type=gha`, y por que en
+  alta seguridad se elige distroless en lugar de Alpine.
+
+Ejemplo de formato:
+https://www.loom.com/share/<tu-id-aqui>
