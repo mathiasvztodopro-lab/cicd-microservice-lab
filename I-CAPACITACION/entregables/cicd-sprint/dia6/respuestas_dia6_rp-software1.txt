@@ -1,0 +1,6 @@
+﻿BLOQUE D - Consultoría
+Día 6 | rp-software1
+1. Zero-Downtime: despliegues sin interrupción de servicio (rolling updates, health checks)
+2. Blue-Green: 2 ambientes idénticos; cambia tráfico entre blue/green
+3. Canary: despliega a porcentaje pequeño primero, valida métricas, expande gradualmente
+Diferencia: Blue-Green minimiza riesgo con cambio atómico; Canary permite validación con usuarios reales progresiva.

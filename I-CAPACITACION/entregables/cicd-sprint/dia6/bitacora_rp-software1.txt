@@ -1,0 +1,6 @@
+﻿BLOQUE F - Bitácora
+Día 6 | rp-software1
+- smoke-test.sh + rollback.sh creados
+- cd-staging.yml actualizado con smoke tests + rollback condicional (needs: deploy-staging, if: failure())
+- Estructura D6 lista
+- Pendiente E (simulación fallo+rollback)

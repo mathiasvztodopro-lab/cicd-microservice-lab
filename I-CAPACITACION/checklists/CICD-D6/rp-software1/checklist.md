@@ -12,3 +12,5 @@ url_repo: https://github.com/mathiasvztodopro-lab/cicd-microservice-lab
 [ ] D - Consultoría (Zero-Downtime, Blue-Green, Canary)
 [ ] E - Simulación fallo + rollback
 [ ] F - Bitácora cierre
+
+[~] A-C integrados; pendiente D–F completos
