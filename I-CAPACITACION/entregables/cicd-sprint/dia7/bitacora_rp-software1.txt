@@ -1,0 +1,4 @@
+﻿D7 - Cierre parcial
+- estructura/checklist creada
+- respuestas D7 preliminares
+- pendiente A,B,C,E,F con Loom

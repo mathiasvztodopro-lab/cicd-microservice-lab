@@ -1,0 +1,5 @@
+﻿D7 - rp-software1
+ChatOps pendiente (webhook opcional). DORA calculado conceptualmente.
+E2E cubierto por pipeline. IDPs/Platform Engineering: Internal Developer Platform centraliza tooling/self-service.
+Auditoría: pipelines presentes (ci/docker-publish/cd-staging/security-scan) + scripts.
+Cierre: pendiente Loom.
